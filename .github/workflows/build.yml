@@ -117,7 +117,10 @@ jobs:
         run: |
           flutter pub get
           flutter analyze
-          flutter test
+          # A failing test's text lives only in the run log, which is not
+          # readable without a sign-in; this reporter also writes each
+          # failure as an annotation, which is.
+          flutter test --reporter=github
 
   windows:
     needs: test
