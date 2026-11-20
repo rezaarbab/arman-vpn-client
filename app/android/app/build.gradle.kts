@@ -107,6 +107,8 @@ flutter {
 }
 
 dependencies {
+    // the xray core, vendored at its exact bytes
+    implementation(files("libs/libv2ray.aar"))
     // The Go core: `gomobile bind -target=android -androidapi 24
     // -o app/android/app/libs/core.aar ./mobile` in core/ (see app/README.md).
     implementation(files("libs/core.aar"))
