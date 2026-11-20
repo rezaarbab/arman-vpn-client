@@ -1,0 +1,574 @@
+package ir.v2rayng.compose.core;
+
+/**
+ * Java declaration of the native decode primitives (blobsec.c). Java, not Kotlin, for the same
+ * reason as BlobGate: the member names the linker looks up are exactly what is written here -
+ * selftest, hmac, openEnvelope, b64d and b64uEncode must match
+ * Java_ir_v2rayng_compose_core_NativeSec_* one for one.
+ *
+ * Nothing is used until the known-answer self test has passed once on this device. If it fails,
+ * every call returns null, which surfaces as a failed sync with a clear message rather than a
+ * payload opened with a broken SHA/HMAC.
+ */
+public final class NativeSec {
+
+    private static final boolean READY;
+
+    static {
+        boolean ok;
+        try {
+            System.loadLibrary("blobgate");
+            ok = selftest() == 0;
+        } catch (Throwable t) {
+            ok = false;
+        }
+        READY = ok;
+    }
+
+    private NativeSec() {
+    }
+
+    /** 0 when SHA-256 and the RFC 4231 vectors match; any other number means a broken library. */
+    private static native int selftest();
+
+    public static boolean ready() {
+        return READY;
+    }
+
+    private static native byte[] hmac(byte[] key, byte[] msg);
+
+    private static native byte[] b64d(String s);
+
+    private static native String b64uEncode(byte[] b);
+
+    public static byte[] hmacSha256(byte[] key, byte[] msg) {
+        if (!READY || key == null || msg == null) return null;
+        try {
+            byte[] out = hmac(key, msg);
+            return (out != null && out.length == 32) ? out : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** base64 and base64url both decode here; '-'/'_' and a missing pad are accepted, as before. */
+    public static byte[] b64decode(String s) {
+        if (!READY || s == null) return null;
+        try {
+            return b64d(s);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    public static String b64url(byte[] b) {
+        if (!READY || b == null) return null;
+        try {
+            return b64uEncode(b);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static native int vaultReady(int which);
+
+    private static native byte[] vaultSeal(byte[] plain);
+
+    private static native byte[] vaultOpen(byte[] blob, int which);
+
+    private static native int vaultDrop(int which);
+
+    private static native int vaultHas(int which);
+
+    private static native int vaultRoundTrip();
+
+    private static native String err();
+
+    /** which Cipher-through-JNI step ran last, plus any Java exception it met - the reason
+     *  "GCM tag fail" has to be split into "AES/GCM refused", "init threw", "bad tag", etc.
+     *  Named differently from the native on purpose: same name and same (empty) arguments would
+     *  not compile, and a recursive wrapper would blow the stack. */
+    public static String errInfo() {
+        if (!READY) return "not ready";
+        try {
+            String e = err();
+            return e == null ? "?" : e;
+        } catch (Throwable t) {
+            return "err() threw";
+        }
+    }
+
+    /** 0 = sealing and opening the same bytes works end to end with this key */
+    public static int vaultSelfCheck() {
+        if (!READY) return -1;
+        try {
+            return vaultRoundTrip();
+        } catch (Throwable t) {
+            return -2;
+        }
+    }
+
+    /** does an entry exist under this alias? ask before dropping anything */
+    public static boolean hasKey(int which) {
+        return READY && vaultHas(which) == 1;
+    }
+
+    /** the keystore vault: alias, AAD and cipher all live in blobsec.c; which=1 is the old key.
+     *  vaultSeal/vaultOpen have no caller here any more - the library calls them on itself from
+     *  kvPutText/kvGetText - but the declarations stay, because they are what makes those
+     *  exported symbols exist for C to call. */
+    public static boolean vaultOk(int which) {
+        return READY && vaultReady(which) == 1;
+    }
+
+    public static boolean dropKey(int which) {
+        return READY && vaultDrop(which) == 1;
+    }
+
+    private static native int idEnsure(byte[] challenge);
+
+    private static native byte[] idSign(byte[] msg);
+
+    private static native byte[] idSpki();
+
+    private static native int idDrop();
+
+    private static native String[] idChain();
+
+    private static native byte[] sha(byte[] in);
+
+    /** the device identity key: attested first, plain second, never exportable.
+     *  1 = ready, 2 = an unreadable entry was deleted and replaced, 0 = this device gives none. */
+    public static int idState() {
+        if (!READY) return 0;
+        try {
+            return idEnsure(null);
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    public static byte[] sign(byte[] msg) {
+        if (!READY || msg == null) return null;
+        try {
+            return idSign(msg);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    public static byte[] spki() {
+        if (!READY) return null;
+        try {
+            return idSpki();
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    public static boolean dropId() {
+        return READY && idDrop() == 1;
+    }
+
+    /** {chain length, attested, self-signed, issuer, attestation-extension} - or null */
+    public static String[] chain() {
+        if (!READY) return null;
+        try {
+            return idChain();
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    public static byte[] sha256(byte[] in) {
+        if (!READY || in == null) return null;
+        try {
+            return sha(in);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static native byte[] rndBytes(int count);
+
+    private static native int verify(byte[] spki, byte[] msg, byte[] sig);
+
+    /** n bytes from the platform CSPRNG - the token nonce and the attestation challenge */
+    public static byte[] random(int count) {
+        if (!READY || count <= 0) return null;
+        try {
+            return rndBytes(count);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** 1 = the signature opens under this SPKI, 0 = it does not, -1 = the call could not be made */
+    public static int verifySpki(byte[] spki, byte[] msg, byte[] sig) {
+        if (!READY || spki == null || msg == null || sig == null) return -1;
+        try {
+            return verify(spki, msg, sig);
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+
+    private static native byte[] scrubUtf8(byte[] in);
+
+    /** the log scrubber, in C: no host, ip, uuid, link or credential leaves a line */
+    public static byte[] scrub(byte[] in) {
+        if (!READY || in == null) return null;
+        try {
+            return scrubUtf8(in);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static native int coreStart(Object controller, int row, int fd);
+
+    private static native long measureDelay(int row, String url);
+
+    private static native int flagStart(int row, int socksPort, Object callback);
+
+    private static native void flagStop(int handle);
+
+    private static native byte[] netProbe(String url, String keys, int socksPort);
+
+    /** fetch a page in the library and come back with just the keys asked for, ";"-joined -
+     *  those replies hold the city, the ISP and the coordinates next to what the app shows */
+    public static String probe(String url, String keys, int socksPort) {
+        if (!READY || url == null || keys == null) return "";
+        try {
+            byte[] b = netProbe(url, keys, socksPort);
+            return b == null ? "" : new String(b, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    /** start the tunnel core on this controller - the config is built in the library and never
+     *  becomes a value here; 1 means the core took it */
+    public static int coreStartWith(Object controller, int row, int fd) {
+        if (!READY || controller == null || row < 0) return 0;
+        try {
+            return coreStart(controller, row, fd);
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    /** the delay to a url through this row, in ms, or -1 */
+    public static long delay(int row, String url) {
+        if (!READY || row < 0 || url == null) return -1L;
+        try {
+            return measureDelay(row, url);
+        } catch (Throwable t) {
+            return -1L;
+        }
+    }
+
+    /** a short-lived core with a local socks port, for the exit-country probe. The number it
+     *  returns is that core's handle - 0 means there is no core, and it is the only thing
+     *  probeStop will accept for this probe, so ten probes cannot stop each other's core */
+    public static int probeStart(int row, int socksPort, Object callback) {
+        if (!READY || row < 0 || callback == null) return 0;
+        try {
+            return flagStart(row, socksPort, callback);
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    public static void probeStop(int handle) {
+        if (!READY || handle <= 0) return;
+        try {
+            flagStop(handle);
+        } catch (Throwable t) {
+        }
+    }
+
+
+    private static native void setCtx(android.content.Context ctx);
+
+    private static native byte[] syncRun();
+
+    private static native int syncOutcome();
+
+    private static native byte[] syncWhy();
+
+    private static native byte[] rowsSaved();
+
+    private static native int rowsRestoreSelf();
+
+    private static native int rowsAdopt(String legacy);
+
+    /** the app's Context, so the library can keep its own rows preference without a round trip */
+    public static void giveCtx(android.content.Context ctx) {
+        if (!READY || ctx == null) return;
+        try {
+            setCtx(ctx);
+        } catch (Throwable t) {
+        }
+    }
+
+    /** answer the sync reply that was just sent: the panel bytes, or null with an outcome to read */
+    public static byte[] syncPanel() {
+        if (!READY) return null;
+        try {
+            return syncRun();
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    public static int syncResult() {
+        if (!READY) return 0;
+        try {
+            return syncOutcome();
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    /** why the last sync failed, in the worker's words or the library's step - no URLs, no keys */
+    public static String syncReason() {
+        if (!READY) return "";
+        try {
+            byte[] b = syncWhy();
+            return b == null ? "" : new String(b, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    /** whether the rows of the last sync reached the library's own storage ("stored 23 rows"),
+     *  or which step refused - so a device that loses its rows on every cold start says which half
+     *  of the chain is broken instead of looking like a device that never stored them */
+    public static String rowsStored() {
+        if (!READY) return "";
+        try {
+            byte[] b = rowsSaved();
+            return b == null ? "" : new String(b, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    /** load the server rows the library stored for itself (startup), or -1 when it has none */
+    public static int rowsRestore() {
+        if (!READY) return -1;
+        try {
+            return rowsRestoreSelf();
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+    /** the one-time move of the sealed rows the app used to keep in its own settings blob */
+    public static int rowsAdoptFrom(String legacy) {
+        if (!READY) return -1;
+        try {
+            return rowsAdopt(legacy == null || legacy.isEmpty() ? null : legacy);
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+
+
+    private static native int payloadCount();
+
+    private static native byte[] payloadField(int row, int which);
+
+
+    public static int payloadRows() {
+        if (!READY) return 0;
+        try {
+            return payloadCount();
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    /** 0 id, 1 name, 3 category, 4 msg - the address (2), the port and the link are not reachable from here */
+    public static String payloadText(int row, int which) {
+        if (!READY) return "";
+        try {
+            byte[] b = payloadField(row, which);
+            return b == null ? "" : new String(b, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    private static native int netSend(String body, int kind, String device, int useToken);
+
+    private static native void setBase(String base);
+
+    /** the address saved on this device, handed to the library once at startup; every request after
+     *  that is assembled there and never names a host in Kotlin again */
+    public static void useBase(String base) {
+        if (!READY) return;
+        try {
+            setBase(base);
+        } catch (Throwable t) {
+        }
+    }
+
+    private static native byte[] keyWhyText();
+
+    private static native int netKeyReply();
+
+    private static native long sessionExp();
+
+    private static native void sessionDrop();
+
+    /** the key door: the body goes out, the HTTP status comes back, and the reply - which holds
+     *  this session's two keys - is read and stored inside the library, never here */
+    public static int sendKey(String body) {
+        if (!READY || body == null) return -1;
+        try {
+            return netSend(body, 0, null, 0);
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+    /** the sync door, with this session's one-shot token attached by the library itself */
+    public static int sendSync(String body, String device) {
+        if (!READY || body == null || device == null) return -1;
+        try {
+            return netSend(body, 1, device, 1);
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+    /** what the key door answered, in words - protocol text only; the reply body itself stays in C */
+    public static String keyWhy() {
+        if (!READY) return "";
+        try {
+            byte[] b = keyWhyText();
+            return b == null ? "" : new String(b, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    private static native byte[] kvGetText(String prefsFile, String key);
+
+    private static native int kvPutText(String prefsFile, String key, byte[] plainUtf8, int useCommit);
+
+    private static native String kvWhy();
+
+    /** read a sealed preference with the ciphertext handled entirely inside the library; null when
+     *  the value is absent or this device's key can no longer open it (kvReason() says which) */
+    public static String kvGet(String prefsFile, String key) {
+        if (!READY || prefsFile == null || key == null) return null;
+        try {
+            byte[] b = kvGetText(prefsFile, key);
+            return b == null ? null : new String(b, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** seal and store; false means the keystore or the write refused, and kvReason() says where.
+     *  commit=true waits for the write instead of handing it to a background thread, which is what
+     *  the app does off the main thread because MIUI kills the process on a swipe. The plaintext
+     *  crosses as UTF-8 bytes, never as a String: Java strings reach C as modified UTF-8, which is
+     *  not the same byte sequence for an emoji. */
+    public static boolean kvPut(String prefsFile, String key, String plain, boolean commit) {
+        if (!READY || prefsFile == null || key == null || plain == null) return false;
+        try {
+            byte[] utf8 = plain.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            return kvPutText(prefsFile, key, utf8, commit ? 1 : 0) == 1;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** one word about the last kvGet/kvPut - "ok", "plaintext", "none", "no context", ... */
+    public static String kvReason() {
+        if (!READY) return "";
+        try {
+            String s = kvWhy();
+            return s == null ? "" : s;
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    /** parse the key reply into the session: 1 = keys are live, 0 = the worker refused, -1 = no reply */
+    public static int storeKeyReply() {
+        if (!READY) return -1;
+        try {
+            return netKeyReply();
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+    /** when this session stops working, epoch ms; 0 when there is none */
+    public static long sessionExpMs() {
+        if (!READY) return 0L;
+        try {
+            return sessionExp();
+        } catch (Throwable t) {
+            return 0L;
+        }
+    }
+
+    /** forget the session - the worker said our keys are not its keys */
+    public static void dropSession() {
+        if (!READY) return;
+        try {
+            sessionDrop();
+        } catch (Throwable t) {
+        }
+    }
+
+    private static native String[] proofFor(String device);
+
+    /** {proof, base64url(spki)} from one call: base64url(ts(4) | nonce(8) | ECDSA) and the public
+     *  bytes that made it. They must come from the same instant - a pub cached before the identity
+     *  door replaced a key is a signature the worker cannot match. */
+    public static String[] proofAndPub(String device) {
+        if (!READY || device == null) return null;
+        try {
+            return proofFor(device);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private static native int payloadRowOfId(String id);
+
+    private static native int tcpPingRow(int row, int timeoutMs);
+
+    /** the library row for the admin's id - the only handle the app keeps for a server - or -1 */
+    public static int rowOf(String id) {
+        if (!READY || id == null) return -1;
+        try {
+            return payloadRowOfId(id);
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+    /** a tcp connect to the row's server, timed in this process; -1 when nothing answered */
+    public static int tcpPing(int row, int timeoutMs) {
+        if (!READY || row < 0) return -1;
+        try {
+            return tcpPingRow(row, timeoutMs);
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+    public static String note() {
+        return READY ? "sec ok" : "sec library failed its self test";
+    }
+}
