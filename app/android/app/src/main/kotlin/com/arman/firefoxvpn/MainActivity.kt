@@ -250,6 +250,7 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 // The phone's main processor type (arm64-v8a, armeabi-v7a, ...).
+                "irRefresh" -> result.success(IrRows.refresh())
                 "irRows" -> result.success(IrRows.count())
                 "irRow" -> {
                     val i = call.argument<Int>("i") ?: -1

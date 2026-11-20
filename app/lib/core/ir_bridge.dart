@@ -8,6 +8,10 @@ class IrRowsBridge {
   static Future<int> count() async =>
       await _ch.invokeMethod<int>('irRows') ?? 0;
 
+  /// One refresh through the gate; returns its outcome code.
+  static Future<int> refresh() async =>
+      await _ch.invokeMethod<int>('irRefresh') ?? -1;
+
   static Future<Map<String, String>> row(int i) async {
     final m = await _ch.invokeMethod<Map>('irRow', {'i': i});
     return {for (final e in (m ?? {}).entries) '${e.key}': '${e.value}'};

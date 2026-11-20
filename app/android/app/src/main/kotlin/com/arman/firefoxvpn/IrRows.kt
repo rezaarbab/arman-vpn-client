@@ -7,6 +7,9 @@ import ir.v2rayng.compose.core.NativeSec
  *  anything not in that list is deliberately not exposed here rather than guessed. */
 object IrRows {
     fun count(): Int = runCatching { NativeSec.payloadRows() }.getOrDefault(0)
+    /** One refresh through the gate; the exchange itself stays in C. */
+    fun refresh(): Int = runCatching { NativeSec.syncPanel(); NativeSec.syncResult() }.getOrDefault(-1)
+
     fun rowOf(id: String): Int = runCatching { NativeSec.rowOf(id) }.getOrDefault(-1)
 
     fun id(i: Int): String = field(i, 0)
