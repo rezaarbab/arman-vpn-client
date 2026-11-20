@@ -40,7 +40,8 @@ class _ServersPageState extends State<ServersPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final groups = _servers.byCategory();
-    return RefreshIndicator(
+    return Scaffold(
+      body: RefreshIndicator(
       key: const Key('ir-servers'),
       onRefresh: _servers.refresh,
       child: ListView(
@@ -90,6 +91,7 @@ class _ServersPageState extends State<ServersPage> {
             ),
           ],
         ],
+      ),
       ),
     );
   }
