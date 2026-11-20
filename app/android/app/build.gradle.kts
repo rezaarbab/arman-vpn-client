@@ -59,7 +59,7 @@ android {
         versionName = flutter.versionName
         externalNativeBuild {
             ndkBuild {
-                targets += "hev-socks5-tunnel"
+                targets += listOf("hev-socks5-tunnel", "blobgate")
                 // REV_ID: its version, which it would ask Git for.
                 arguments += listOf("REV_ID=2.19.3", "APP_SUPPORT_FLEXIBLE_PAGE_SIZES=true")
                 // The class its native methods bind to.

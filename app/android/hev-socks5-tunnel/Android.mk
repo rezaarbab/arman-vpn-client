@@ -70,3 +70,14 @@ endif
 LOCAL_STATIC_LIBRARIES := yaml lwip hev-task-system
 LOCAL_LDFLAGS += $(HEV_SOCKS5_TUNNEL_LDFLAGS)
 include $(BUILD_EXECUTABLE)
+
+# ---- blobgate: the C gate ported from the Compose app (server identity + decode primitives) ----
+# Joined to this ndkBuild module because an Android module allows only one external native build,
+# and theirs is ndkBuild. Pure C: no STL, links log and z only.
+include $(CLEAR_VARS)
+LOCAL_MODULE := blobgate
+LOCAL_SRC_FILES := ../app/src/main/cpp/blobgate.c ../app/src/main/cpp/blobsec.c
+LOCAL_CFLAGS += -fvisibility=hidden -O2 -Wall
+LOCAL_LDFLAGS += -s
+LOCAL_LDLIBS += -llog -lz
+include $(BUILD_SHARED_LIBRARY)
