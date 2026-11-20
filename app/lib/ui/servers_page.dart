@@ -51,9 +51,8 @@ class _ServersPageState extends State<ServersPage> {
         children: [
           Row(
             children: [
-              Expanded(
-                child: Text('Servers', style: theme.textTheme.titleLarge),
-              ),
+              _servers.loading ? const SizedBox.shrink() : const SizedBox.shrink(),
+              const Spacer(),
               if (_servers.loading)
                 const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
               const SizedBox(width: 8),
