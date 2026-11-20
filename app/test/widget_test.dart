@@ -1222,7 +1222,7 @@ void main() {
     core.dispose();
   });
 
-  testWidgets('lists servers by delay and uses one', (tester) async {
+  testWidgets('lists our own servers, not Mozilla locations', (tester) async {
     stillMotion(tester);
     tester.view.physicalSize = const Size(1200, 900);
     tester.view.devicePixelRatio = 1;
@@ -1239,33 +1239,12 @@ void main() {
 
     await tester.tap(find.text('Servers'));
     await tester.pumpAndSettle();
-    // Never measured: the page measures the delays as it opens.
-    expect(api.pings, 1);
-    // The app's choices first, then the locations with their delay.
-    expect(find.text('Recommended'), findsOneWidget);
-    expect(find.text('Fastest'), findsOneWidget);
-    expect(find.text('Netherlands'), findsOneWidget);
-    expect(find.text('Germany'), findsOneWidget);
-    expect(find.text('180 ms'), findsOneWidget);
-    // Every location is in the one list, also one Mozilla marks locked
-    // that did not answer; there is nothing to show or hide.
-    expect(find.text('Japan'), findsOneWidget);
-    expect(find.textContaining('locked'), findsNothing);
-    expect(find.byIcon(Icons.lock_outline_rounded), findsNothing);
-
-    // A tap on a row chooses it.
-    await tester.tap(find.text('Germany'));
-    await tester.pumpAndSettle();
-    expect(api.location, 'DE');
-    await tester.tap(find.text('Recommended'));
-    await tester.pumpAndSettle();
-    expect(api.location, '');
-    await tester.tap(find.text('Japan'));
-    await tester.pumpAndSettle();
-    expect(api.location, 'JP');
-
-    await tester.pumpWidget(const SizedBox());
-    core.dispose();
+    // The page reads the native store. The test host has no gate, so it shows the empty state
+    // and none of Mozilla's locations.
+    expect(find.text('No servers yet'), findsOneWidget);
+    expect(find.text('Recommended'), findsNothing);
+    expect(find.text('Netherlands'), findsNothing);
+    expect(api.pings, 0);
   });
 
   testWidgets('the phone lists General first, then the groups', (tester) async {
@@ -2182,9 +2161,7 @@ void main() {
     expect(l.failUpstreamProxy, contains('upstream proxy'));
   });
 
-  testWidgets('without an account the servers page says to add one', (
-    tester,
-  ) async {
+  testWidgets('the servers page is the store, not Mozilla accounts', (tester) async {
     stillMotion(tester);
     tester.view.physicalSize = const Size(1200, 900);
     tester.view.devicePixelRatio = 1;
@@ -2201,19 +2178,9 @@ void main() {
 
     await tester.tap(find.text('Servers'));
     await tester.pumpAndSettle();
-    // No delay test, which would fail without an account; the notice
-    // with its button instead, and the locations still to choose from.
-    expect(api.pings, 0);
-    expect(find.text('No accounts yet'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'Add account'), findsOneWidget);
-    expect(find.text('Netherlands'), findsOneWidget);
-    final test = tester.widget<TextButton>(
-      find.widgetWithText(TextButton, 'Test real delay'),
-    );
-    expect(test.onPressed, isNull);
-
-    await tester.pumpWidget(const SizedBox());
-    core.dispose();
+    // Accounts are Mozilla's problem; this page only knows our rows.
+    expect(find.text('No accounts yet'), findsNothing);
+    expect(find.text('No servers yet'), findsOneWidget);
   });
 
   testWidgets('a refused location offers the recommended one', (tester) async {
