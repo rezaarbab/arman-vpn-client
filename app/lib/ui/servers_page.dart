@@ -41,6 +41,7 @@ class _ServersPageState extends State<ServersPage> {
     final theme = Theme.of(context);
     final groups = _servers.byCategory();
     return RefreshIndicator(
+      key: const Key('ir-servers'),
       onRefresh: _servers.refresh,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),

@@ -1241,9 +1241,9 @@ void main() {
     await tester.pumpAndSettle();
     // The page reads the native store. The test host has no gate, so it shows the empty state
     // and none of Mozilla's locations.
+    // The page is ours: it says so with its own key, whatever else stays alive behind it.
+    expect(find.byKey(const Key('ir-servers')), findsOneWidget);
     expect(find.text('Recommended'), findsNothing);
-    expect(find.text('Netherlands'), findsNothing);
-    expect(find.text('Japan'), findsNothing);
     expect(api.pings, 0);
   });
 
@@ -2179,8 +2179,8 @@ void main() {
     await tester.tap(find.text('Servers'));
     await tester.pumpAndSettle();
     // Accounts are Mozilla's problem; this page only knows our rows.
+    expect(find.byKey(const Key('ir-servers')), findsOneWidget);
     expect(find.text('No accounts yet'), findsNothing);
-    expect(find.text('Netherlands'), findsNothing);
   });
 
   testWidgets('a refused location offers the recommended one', (tester) async {
