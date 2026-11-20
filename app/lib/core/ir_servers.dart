@@ -1,0 +1,53 @@
+import 'package:flutter/foundation.dart';
+
+import 'ir_bridge.dart';
+
+/// One row of our store, as the screens need it.
+@immutable
+class IrServer {
+  const IrServer({required this.id, required this.name, required this.category, required this.note});
+
+  final String id;
+  final String name;
+  final String category;
+  final String note;
+
+  factory IrServer.fromMap(Map<String, String> m) => IrServer(
+        id: m['id'] ?? '',
+        name: m['name'] ?? '',
+        category: m['cat'] ?? '',
+        note: m['msg'] ?? '',
+      );
+}
+
+/// The list the screens will read instead of Mozilla's countries. Refreshing asks the gate for
+/// one exchange and then re-reads the store; nothing here talks to the network itself.
+class IrServers extends ChangeNotifier {
+  List<IrServer> rows = const [];
+  bool loading = false;
+  String? error;
+
+  Future<void> refresh() async {
+    loading = true;
+    notifyListeners();
+    try {
+      final code = await IrRowsBridge.refresh();
+      final raw = await IrRowsBridge.all();
+      rows = raw.map(IrServer.fromMap).where((r) => r.id.isNotEmpty).toList(growable: false);
+      error = code < 0 ? 'refresh failed' : null;
+    } catch (e) {
+      error = '$e';
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
+  }
+
+  Map<String, List<IrServer>> byCategory() {
+    final out = <String, List<IrServer>>{};
+    for (final r in rows) {
+      (out[r.category.isEmpty ? 'Default' : r.category] ??= []).add(r);
+    }
+    return out;
+  }
+}
