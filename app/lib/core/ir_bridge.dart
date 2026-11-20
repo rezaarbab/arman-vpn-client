@@ -12,6 +12,16 @@ class IrRowsBridge {
   static Future<int> refresh() async =>
       await _ch.invokeMethod<int>('irRefresh') ?? -1;
 
+  /// Every row the store holds, in store order.
+  static Future<List<Map<String, String>>> all() async {
+    final n = await count();
+    final out = <Map<String, String>>[];
+    for (var i = 0; i < n; i++) {
+      out.add(await row(i));
+    }
+    return out;
+  }
+
   static Future<Map<String, String>> row(int i) async {
     final m = await _ch.invokeMethod<Map>('irRow', {'i': i});
     return {for (final e in (m ?? {}).entries) '${e.key}': '${e.value}'};
