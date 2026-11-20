@@ -20,16 +20,18 @@ class ServersPage extends StatefulWidget {
 class _ServersPageState extends State<ServersPage> {
   final _servers = IrServers();
   String? _picked;
+  bool _alive = true;
 
   @override
   void initState() {
     super.initState();
-    _servers.addListener(() => setState(() {}));
+    _servers.addListener(() { if (_alive) setState(() {}); });
     _servers.refresh();
   }
 
   @override
   void dispose() {
+    _alive = false;
     _servers.dispose();
     super.dispose();
   }

@@ -23,13 +23,22 @@ class IrServer {
 /// The list the screens will read instead of Mozilla's countries. Refreshing asks the gate for
 /// one exchange and then re-reads the store; nothing here talks to the network itself.
 class IrServers extends ChangeNotifier {
+  bool _gone = false;
+  void _notify() { if (!_gone) notifyListeners(); }
+
+  @override
+  void dispose() {
+    _gone = true;
+    super.dispose();
+  }
+
   List<IrServer> rows = const [];
   bool loading = false;
   String? error;
 
   Future<void> refresh() async {
     loading = true;
-    notifyListeners();
+    _notify();
     try {
       final code = await IrRowsBridge.refresh();
       final raw = await IrRowsBridge.all();
@@ -39,7 +48,7 @@ class IrServers extends ChangeNotifier {
       error = '$e';
     } finally {
       loading = false;
-      notifyListeners();
+      _notify();
     }
   }
 
