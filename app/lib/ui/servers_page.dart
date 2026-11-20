@@ -26,7 +26,9 @@ class _ServersPageState extends State<ServersPage> {
   void initState() {
     super.initState();
     _servers.addListener(() { if (_alive) setState(() {}); });
-    _servers.refresh();
+    // after the first frame: refresh notifies synchronously at its start, and setState during
+    // initState is the exception the two widget tests hit.
+    WidgetsBinding.instance.addPostFrameCallback((_) { if (_alive) _servers.refresh(); });
   }
 
   @override
