@@ -250,6 +250,11 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 // The phone's main processor type (arm64-v8a, armeabi-v7a, ...).
+                "irRows" -> result.success(IrRows.count())
+                "irRow" -> {
+                    val i = call.argument<Int>("i") ?: -1
+                    result.success(mapOf("id" to IrRows.id(i), "name" to IrRows.name(i), "cat" to IrRows.category(i), "msg" to IrRows.note(i)))
+                }
                 "abi" -> result.success(Build.SUPPORTED_ABIS.firstOrNull() ?: "")
                 "isTv" -> result.success(isTv(resources.configuration))
                 "routingCountries" -> inBackground(result) { routingCountries() }
