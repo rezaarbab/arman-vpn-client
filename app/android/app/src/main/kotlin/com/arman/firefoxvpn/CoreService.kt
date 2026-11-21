@@ -36,7 +36,6 @@ class CoreService : VpnService() {
 
     private var controller: CoreController? = null
     private var tunFd = -1
-    private var connectedSince = 0L
     private var lastUp = 0L
     private var lastDown = 0L
     private var rateUp = 0L
@@ -290,6 +289,11 @@ class CoreService : VpnService() {
         /** The last tunnel's failure, as one sentence; "" when none. */
         @Volatile
         var lastFailure = ""
+            internal set
+
+        /** When the tunnel came up, for the clock and for a test's freshness. */
+        @Volatile
+        var connectedSince = 0L
             internal set
 
         /** What the tunnel carried so far, and its last second's rate. */
