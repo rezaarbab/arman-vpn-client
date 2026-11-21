@@ -283,25 +283,9 @@ class MainActivity : FlutterActivity() {
                 // The exchange is a network call, and this handler runs on the
                 // UI thread: it goes to the worker and comes back with the answer.
                 // A failure is one sentence in the in-app log, naming its cause.
-                "irRefresh" -> inBackground(result) {
-                    val code = try {
-                        IrRows.refresh()
-                    } catch (t: Throwable) {
-                        CoreService.log("sync threw: " + t.javaClass.simpleName)
-                        -1
-                    }
-                    if (code < 0) {
-                        CoreService.log("sync failed: " + IrRows.why().ifBlank { "no reason from the gate" })
-                    } else if (IrRows.count() == 0 && IrRows.gate() != "sec ok") {
-                        CoreService.log(IrRows.gate())
-                    } else {
-                        // one line that proves which build ran and that the gate answered
-                        CoreService.log("sync: " + IrRows.count() + " servers")
-                    }
-                    code
-                }
+                "irRefresh" -> inBackground(result) { Sync.run(this) }
                 "irRowsAll" -> inBackground(result) { IrRows.all() }
-                "irSyncWhy" -> result.success(IrRows.why())
+                "irSyncWhy" -> result.success(Sync.lastReason)
                 "irGate" -> result.success(IrRows.gate())
                 "irRows" -> result.success(IrRows.count())
                 "irRow" -> {
