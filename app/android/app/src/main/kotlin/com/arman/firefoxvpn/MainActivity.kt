@@ -280,7 +280,9 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 // The phone's main processor type (arm64-v8a, armeabi-v7a, ...).
-                "irRefresh" -> result.success(IrRows.refresh())
+                // The exchange is a network call, and this handler runs on the
+                // UI thread: it goes to the worker and comes back with the answer.
+                "irRefresh" -> inBackground(result) { IrRows.refresh() }
                 "irRows" -> result.success(IrRows.count())
                 "irRow" -> {
                     val i = call.argument<Int>("i") ?: -1

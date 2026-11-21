@@ -34,7 +34,13 @@ class _ServersPageState extends State<ServersPage> {
       IrRowsBridge.picked().then((id) {
         if (_alive && id.isNotEmpty) setState(() => _picked = id);
       }, onError: (Object _) {});
-      _servers.refresh();
+      _servers.refresh().then((_) {
+        // a list nobody has chosen from yet dials its first row
+        if (!_alive || _picked != null || _servers.rows.isEmpty) return;
+        final id = _servers.rows.first.id;
+        setState(() => _picked = id);
+        IrRowsBridge.pick(id).catchError((Object _) {});
+      });
     });
   }
 
