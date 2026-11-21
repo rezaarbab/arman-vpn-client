@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'app_settings.dart';
 import 'core/android_core.dart';
+import 'core/blob_api.dart';
 import 'core/core_api.dart';
 import 'core/core_controller.dart';
 import 'core/updates.dart';
@@ -88,8 +89,8 @@ Future<void> runAndroid() async {
         WidgetsBinding.instance.platformDispatcher.locale.countryCode,
   );
   final core = CoreController(
-    AndroidCore(dataDir).connect,
-    turnOn: AndroidCore.setOn,
+    () async => BlobApi(),
+    turnOn: BlobApi.setOn,
   )..start();
   AppLifecycleListener(
     onResume: core.retryNow,

@@ -26,4 +26,13 @@ class IrRowsBridge {
     final m = await _ch.invokeMethod<Map>('irRow', {'i': i});
     return {for (final e in (m ?? {}).entries) '${e.key}': '${e.value}'};
   }
+
+  /// Names the row the tunnel dials. The VPN service looks the id up in the
+  /// store at dial time, so a sync between the tap and the dial is safe.
+  static Future<void> pick(String id) async =>
+      await _ch.invokeMethod<void>('irPick', {'id': id});
+
+  /// The row named before; "" when none.
+  static Future<String> picked() async =>
+      await _ch.invokeMethod<String>('irPicked') ?? '';
 }

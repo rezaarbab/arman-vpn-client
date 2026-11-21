@@ -227,12 +227,11 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - name: NDK and gomobile
+      - name: NDK
         run: |
           ndk="$(sed -n 's/.*ndkVersion = "\(.*\)".*/\1/p' app/android/app/build.gradle.kts)"
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$ndk" > /dev/null
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk" >> "$GITHUB_ENV"
-          go install "golang.org/x/mobile/cmd/gomobile@$GOMOBILE_VERSION" "golang.org/x/mobile/cmd/gobind@$GOMOBILE_VERSION"
       - name: Release key
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -267,42 +266,6 @@ jobs:
           set +e
           {
           v='${{ needs.test.outputs.version }}'
-          mkdir -p app/android/app/libs
-          flags="-s -w -X github.com/armanlife/arman-vpn-client/core/internal/version.Current=$v"
-          # The build scripts' optional local settings (scripts/build-local.sh,
-          # which the step above puts there when there is a profile). Without
-          # it the ordinary library is built, which is what this repository's
-          # sources make on their own; scripts/build-android.ps1 does the same
-          # for a local build.
-          root="$PWD"
-          local_tags=''
-          local_ldflags=''
-          local_module=''
-          local_dir=''
-          if [ -f scripts/build-local.sh ]; then . scripts/build-local.sh; fi
-          flags="$flags$local_ldflags"
-          if [ -n "$local_tags" ]; then
-            # gomobile builds from a temporary module of its own, so the
-            # workspace file cannot reach a local module the way a desktop
-            # build does: gomobile's generated package is not a workspace
-            # member. A replace, added for this build only and taken out
-            # again, links it instead.
-            (
-              cd core
-              trap 'git checkout -- go.mod go.sum' EXIT
-              go mod edit "-require=$local_module@v0.0.0" "-replace=$local_module@v0.0.0=$local_dir"
-              # gomobile runs go mod tidy, which must not look a replaced
-              # local module up on the module proxy or the checksum database.
-              export GOWORK=off GOPRIVATE="$local_module" GOFLAGS=-mod=mod
-              gomobile bind -target=android -androidapi 24 -trimpath -tags "$local_tags" \
-                -ldflags "$flags" \
-                -o ../app/android/app/libs/core.aar ./mobile
-            )
-          else
-            (cd core && gomobile bind -target=android -androidapi 24 -trimpath \
-              -ldflags "$flags" \
-              -o ../app/android/app/libs/core.aar ./mobile)
-          fi
           cd app
           flutter pub get
           mkdir -p ../out

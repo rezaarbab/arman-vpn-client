@@ -107,14 +107,9 @@ flutter {
 }
 
 dependencies {
-    // the xray core, vendored at its exact bytes. It stays out of the dependency list until
-    // their gomobile core is deleted: both AARs ship the go.Seq runtime and Gradle refuses the
-    // duplicate classes. Stage D removes their core and this line comes back on.
+    // the xray core, vendored at its exact bytes; it is the app's only core
     implementation(files("libs/libv2ray.aar"))
-    // The Go core: `gomobile bind -target=android -androidapi 24
-    // -o app/android/app/libs/core.aar ./mobile` in core/ (see app/README.md).
-    implementation(files("libs/core.aar"))
-    // ProxyController: the browser sign-in's WebView uses the core's
-    // sign-in proxy. The version webview_flutter_android itself uses.
+    // ProxyController: the WebView's proxy override. The version
+    // webview_flutter_android itself uses.
     implementation("androidx.webkit:webkit:1.15.0")
 }

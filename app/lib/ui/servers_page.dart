@@ -2,11 +2,12 @@ import 'package:material_ui/material_ui.dart';
 
 import '../app_settings.dart';
 import '../core/core_controller.dart';
+import '../core/ir_bridge.dart';
 import '../core/ir_servers.dart';
 
 /// The server list, fed by our own store instead of Mozilla's locations: rows come from the
-/// native gate (category, name, note), grouped by category. Picking a row is local until the
-/// core swap lands; nothing here talks to the Mozilla API.
+/// native gate (category, name, note), grouped by category. A tap names the row the VPN dials;
+/// nothing here talks to the Mozilla API.
 class ServersPage extends StatefulWidget {
   const ServersPage({super.key, required this.core, required this.settings});
 
@@ -28,7 +29,13 @@ class _ServersPageState extends State<ServersPage> {
     _servers.addListener(() { if (_alive) setState(() {}); });
     // after the first frame: refresh notifies synchronously at its start, and setState during
     // initState is the exception the two widget tests hit.
-    WidgetsBinding.instance.addPostFrameCallback((_) { if (_alive) _servers.refresh(); });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_alive) return;
+      IrRowsBridge.picked().then((id) {
+        if (_alive && id.isNotEmpty) setState(() => _picked = id);
+      }, onError: (Object _) {});
+      _servers.refresh();
+    });
   }
 
   @override
@@ -85,7 +92,10 @@ class _ServersPageState extends State<ServersPage> {
                       title: Text(row.name),
                       subtitle: Text(row.note.isEmpty ? row.id : row.note),
                       trailing: _picked == row.id ? const Icon(Icons.check) : null,
-                      onTap: () => setState(() => _picked = row.id),
+                      onTap: () {
+                        setState(() => _picked = row.id);
+                        IrRowsBridge.pick(row.id).catchError((Object _) {});
+                      },
                     ),
                 ],
               ),

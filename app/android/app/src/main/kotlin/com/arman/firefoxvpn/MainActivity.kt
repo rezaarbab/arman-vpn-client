@@ -48,6 +48,9 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         holdPhoneUpright(resources.configuration)
         super.onCreate(savedInstanceState)
+        // the C gate holds the keystore, the prefs and the sync: it needs the
+        // context before the store is read
+        ir.v2rayng.compose.core.NativeSec.giveCtx(applicationContext)
         removeOtherCards()
     }
 
@@ -109,7 +112,9 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "dataDir" -> result.success(CoreService.dataDir(this).absolutePath)
                 "startCore" -> result.success(CoreService.startCore(this, on = false))
-                "dashboardAddress" -> result.success(mobile.Mobile.dashboardAddress())
+                // The UI reads status through the channel now; there is no
+                // dashboard server in this app.
+                "dashboardAddress" -> result.success("")
                 "setOn" -> {
                     if (call.argument<Boolean>("on") != true) {
                         CoreService.turnOff(this)
@@ -128,7 +133,32 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                 }
-                "isRunning" -> result.success(mobile.Mobile.running())
+                "blobStatus" -> result.success(CoreService.statusMap(this))
+                "blobPower" -> {
+                    if (call.argument<Boolean>("on") != true) {
+                        CoreService.turnOff(this)
+                        result.success(null)
+                    } else {
+                        askForNotifications()
+                        val consent = VpnService.prepare(this)
+                        if (consent == null) {
+                            turnOn(result)
+                        } else {
+                            pendingOn?.error("vpn_denied", "superseded", null)
+                            pendingOn = result
+                            startActivityForResult(consent, VPN_REQUEST)
+                        }
+                    }
+                }
+                "blobTest" -> inBackground(result) { CoreService.testPing(this) }
+                "blobLogs" -> result.success(CoreService.logsSince(call.argument<Int>("after") ?: 0))
+                "irPick" -> {
+                    CoreService.pick(this, call.argument<String>("id") ?: "")
+                    if (CoreService.on) CoreService.reconnect(this)
+                    result.success(null)
+                }
+                "irPicked" -> result.success(CoreService.pickedId(this))
+                "isRunning" -> result.success(CoreService.on)
                 "connectionMode" -> result.success(CoreService.connectionMode(this))
                 "showSpeed" -> result.success(CoreService.showSpeed(this))
                 "setShowSpeed" -> {
