@@ -409,6 +409,12 @@ void mockIrStore(WidgetTester tester, List<Map<String, Object?>> rows) {
     switch (call.method) {
       case 'irRows':
         return rows.length;
+      case 'irRowsAll':
+        return rows;
+      case 'irSyncWhy':
+        return '';
+      case 'irGate':
+        return 'sec ok';
       case 'irRefresh':
         return 0;
       case 'irRow':

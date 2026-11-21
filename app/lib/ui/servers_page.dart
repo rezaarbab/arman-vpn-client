@@ -80,6 +80,17 @@ class _ServersPageState extends State<ServersPage> {
           if (_servers.rows.isEmpty && !_servers.loading) ...[
             const SizedBox(height: 24),
             Text('No servers yet', style: theme.textTheme.bodyMedium),
+            // An empty store has two very different reasons; the page names
+            // which one, so the next step is not a guess.
+            if (_servers.gateNote.isNotEmpty && _servers.gateNote != 'sec ok')
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  _servers.gateNote,
+                  style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+                ),
+              ),
+            TextButton(onPressed: _servers.refresh, child: const Text('Sync now')),
           ],
           for (final entry in groups.entries) ...[
             const SizedBox(height: 18),

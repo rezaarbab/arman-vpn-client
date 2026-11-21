@@ -36,6 +36,11 @@ class IrServers extends ChangeNotifier {
   bool loading = false;
   String? error;
 
+  /// The gate's own state when the store came back empty ("sec ok", or that
+  /// its self test failed): an empty page means one of two things, and the
+  /// page should say which.
+  String gateNote = '';
+
   Future<void> refresh() async {
     loading = true;
     _notify();
@@ -43,7 +48,13 @@ class IrServers extends ChangeNotifier {
       final code = await IrRowsBridge.refresh();
       final raw = await IrRowsBridge.all();
       rows = raw.map(IrServer.fromMap).where((r) => r.id.isNotEmpty).toList(growable: false);
-      error = code < 0 ? 'refresh failed' : null;
+      if (code < 0) {
+        final why = await IrRowsBridge.why();
+        error = why.isEmpty ? 'refresh failed' : why;
+      } else {
+        error = null;
+        gateNote = rows.isEmpty ? await IrRowsBridge.gate() : '';
+      }
     } catch (e) {
       error = '$e';
     } finally {

@@ -12,15 +12,25 @@ class IrRowsBridge {
   static Future<int> refresh() async =>
       await _ch.invokeMethod<int>('irRefresh') ?? -1;
 
-  /// Every row the store holds, in store order.
+  /// Every row the store holds, in store order, in one answer.
   static Future<List<Map<String, String>>> all() async {
-    final n = await count();
+    final list = await _ch.invokeListMethod<Object?>('irRowsAll') ?? const [];
     final out = <Map<String, String>>[];
-    for (var i = 0; i < n; i++) {
-      out.add(await row(i));
+    for (final e in list) {
+      if (e is Map) {
+        out.add(<String, String>{for (final x in e.entries) '${x.key}': '${x.value}'});
+      }
     }
     return out;
   }
+
+  /// Why the last refresh failed, as the gate words it; "" for none.
+  static Future<String> why() async =>
+      await _ch.invokeMethod<String>('irSyncWhy') ?? '';
+
+  /// The gate's own state ("sec ok", or that its self test failed).
+  static Future<String> gate() async =>
+      await _ch.invokeMethod<String>('irGate') ?? '';
 
   static Future<Map<String, String>> row(int i) async {
     final m = await _ch.invokeMethod<Map>('irRow', {'i': i});
