@@ -261,6 +261,11 @@ jobs:
           # The key the build profile is built with, when there is one.
           ARMAN_PROFILE_KEY: ${{ secrets.PROFILE_RELAY_KEY }}
         run: |
+          # A compiler error's text is only in the run log, which cannot be
+          # read from outside; the lines that name one are repeated as
+          # annotations here, which can be.
+          set +e
+          {
           v='${{ needs.test.outputs.version }}'
           mkdir -p app/android/app/libs
           flags="-s -w -X github.com/armanlife/arman-vpn-client/core/internal/version.Current=$v"
@@ -307,6 +312,11 @@ jobs:
           done
           flutter build apk --release --dart-define=APP_VERSION=$v
           cp build/app/outputs/flutter-apk/app-release.apk ../out/Arman-VPN-Android-universal.apk
+          } 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          grep -E '^(e: |w: )|: error: |^FAILURE: |^> Task .* FAILED|^Execution failed' build.log \
+            | head -80 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::$line"; done
+          exit "$status"
       - name: Remove the key
         if: always()
         run: rm -f app/android/release.jks app/android/key.properties
