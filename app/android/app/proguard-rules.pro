@@ -3,6 +3,7 @@
 
 # The C gate binds its methods by name too (RegisterNatives in blobgate.c).
 -keep class ir.v2rayng.compose.core.NativeSec { *; }
+-keep class ir.v2rayng.compose.core.BlobGate { *; }
 
 # gomobile's bridge and the core's classes are reached from native code by
 # name; R8 cannot see those references.

@@ -85,6 +85,15 @@ android {
             // a machine without the key) with the debug key, which cannot
             // update an installed release.
             signingConfig = signingConfigs.getByName(if (releaseKey.isEmpty) "debug" else "release")
+            // Native code binds Java by name: blobgate.c registers the gate's
+            // entry points on ir.v2rayng.compose.core.NativeSec, and the Go
+            // bridge in libv2ray does the same. Flutter turns R8 on for every
+            // release by default, and without proguard-rules.pro applied R8
+            // renames both, JNI_OnLoad cannot find them, and the gate reports
+            // "sec library failed its self test". The rules are not trusted on
+            // a device yet, so the release does not shrink.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }

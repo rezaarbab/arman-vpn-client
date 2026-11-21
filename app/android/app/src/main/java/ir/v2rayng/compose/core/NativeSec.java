@@ -14,15 +14,23 @@ public final class NativeSec {
 
     private static final boolean READY;
 
+    /** Why the gate did not come up, as one line; "" when it did. */
+    private static final String LOAD_WHY;
+
     static {
         boolean ok;
+        String why = "";
         try {
             System.loadLibrary("blobgate");
-            ok = selftest() == 0;
+            int r = selftest();
+            ok = r == 0;
+            if (!ok) why = "the self test answered " + r;
         } catch (Throwable t) {
             ok = false;
+            why = t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage());
         }
         READY = ok;
+        LOAD_WHY = ok ? "" : why;
     }
 
     private NativeSec() {
@@ -33,6 +41,11 @@ public final class NativeSec {
 
     public static boolean ready() {
         return READY;
+    }
+
+    /** Why the gate did not come up; "" when it did. */
+    public static String loadWhy() {
+        return LOAD_WHY;
     }
 
     private static native byte[] hmac(byte[] key, byte[] msg);

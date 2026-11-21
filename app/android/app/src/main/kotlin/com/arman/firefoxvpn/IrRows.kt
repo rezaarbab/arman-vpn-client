@@ -38,8 +38,13 @@ object IrRows {
     /** Why the last refresh failed, as the gate words it for a person; "" for none. */
     fun why(): String = runCatching { NativeSec.syncReason() }.getOrDefault("")
 
-    /** The gate's own state: "sec ok", or that its self test failed. */
-    fun gate(): String = NativeSec.note()
+    /** The gate's own state: "sec ok", or why it did not come up. */
+    fun gate(): String =
+        if (NativeSec.ready()) {
+            "sec ok"
+        } else {
+            "the gate did not load: " + NativeSec.loadWhy().ifBlank { "no reason" }
+        }
 
     private fun field(i: Int, which: Int): String =
         runCatching { NativeSec.payloadText(i, which) }.getOrDefault("")
