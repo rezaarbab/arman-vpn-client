@@ -294,6 +294,9 @@ class MainActivity : FlutterActivity() {
                         CoreService.log("sync failed: " + IrRows.why().ifBlank { "no reason from the gate" })
                     } else if (IrRows.count() == 0 && IrRows.gate() != "sec ok") {
                         CoreService.log(IrRows.gate())
+                    } else {
+                        // one line that proves which build ran and that the gate answered
+                        CoreService.log("sync: " + IrRows.count() + " servers")
                     }
                     code
                 }
