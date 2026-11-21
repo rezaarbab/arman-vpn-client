@@ -398,6 +398,33 @@ void stillMotion(WidgetTester tester) {
   addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
 }
 
+/// Answers the Android side's row store from a fixed list: the count, a
+/// refresh that succeeds, and one row per index. Without an answer the page's
+/// refresh never finishes, its spinner animates, and the tree never settles.
+void mockIrStore(WidgetTester tester, List<Map<String, Object?>> rows) {
+  const channel = MethodChannel('app/android');
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+    call,
+  ) async {
+    switch (call.method) {
+      case 'irRows':
+        return rows.length;
+      case 'irRefresh':
+        return 0;
+      case 'irRow':
+        final i = (call.arguments as Map)['i'] as int;
+        return i >= 0 && i < rows.length ? rows[i] : null;
+    }
+    return null;
+  });
+  addTearDown(
+    () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      channel,
+      null,
+    ),
+  );
+}
+
 void main() {
   _connectingRingTests();
   testWidgets('shows the state, turns the VPN off, lists accounts', (
@@ -1228,6 +1255,13 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
+    // The rows live in the Android side's store; this is that side. Without it the
+    // page's refresh never finishes and its spinner keeps the tree from settling.
+    mockIrStore(tester, [
+      {'id': '1', 'name': 'server-1', 'cat': 'Auto', 'msg': ''},
+      {'id': '2', 'name': 'server-2', 'cat': 'Normal', 'msg': 'Frankfurt'},
+    ]);
+
     final api = FakeApi();
     final core = CoreController(
       () async => api,
@@ -1239,11 +1273,14 @@ void main() {
 
     await tester.tap(find.text('Servers'));
     await tester.pumpAndSettle();
-    // The page reads the native store. The test host has no gate, so it shows the empty state
-    // and none of Mozilla's locations.
-    // The page is ours: it says so with its own key. Nothing else is asserted here, because
-    // the shell keeps the other pages mounted and their text is still in the tree.
+
+    // The page is ours, grouped by the store's category, and none of Mozilla's
+    // locations are in the tree.
     expect(find.byKey(const Key('ir-servers')), findsOneWidget);
+    expect(find.text('server-1'), findsOneWidget);
+    expect(find.text('Auto'), findsOneWidget);
+    expect(find.text('Frankfurt'), findsOneWidget);
+    expect(find.text('Netherlands'), findsNothing);
   });
 
   testWidgets('the phone lists General first, then the groups', (tester) async {
@@ -2166,6 +2203,10 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
+    mockIrStore(tester, [
+      {'id': '1', 'name': 'server-1', 'cat': 'Auto', 'msg': ''},
+    ]);
+
     final api = FakeApi()..hasAccounts = false;
     final core = CoreController(
       () async => api,
@@ -2179,6 +2220,10 @@ void main() {
     await tester.pumpAndSettle();
     // Accounts are Mozilla's problem; this page only knows our rows.
     expect(find.byKey(const Key('ir-servers')), findsOneWidget);
+    expect(find.text('server-1'), findsOneWidget);
+    // Mozilla's own notices for the same state are gone with its page.
+    expect(find.text('No accounts yet'), findsNothing);
+    expect(find.text('Netherlands'), findsNothing);
   });
 
   testWidgets('a refused location offers the recommended one', (tester) async {
