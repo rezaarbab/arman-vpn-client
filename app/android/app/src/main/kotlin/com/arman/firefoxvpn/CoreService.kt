@@ -429,6 +429,9 @@ class CoreService : VpnService() {
             lastFailure = ""
             on = true
             connected = false
+            // a store nobody has chosen from yet dials its first row
+            NativeSec.giveCtx(context.applicationContext)
+            if (pickedId(context).isBlank() && IrRows.count() > 0) pick(context, IrRows.id(0))
             val intent = Intent(context, CoreService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
