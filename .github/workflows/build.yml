@@ -177,8 +177,35 @@ jobs:
       - name: Remove the key
         if: always()
         run: rm -f app/android/release.jks app/android/key.properties
-      - uses: actions/upload-artifact@v7
+      # One entry per CPU, so the run page hands out the right file on its own;
+      # the zip holds all three splits for one download.
+      - name: Artifact arm64-v8a
+        uses: actions/upload-artifact@v7
         with:
-          name: android
-          path: out/*
+          name: Arman-VPN-Android-arm64-v8a
+          path: out/Arman-VPN-Android-arm64-v8a.apk
+          if-no-files-found: error
+      - name: Artifact armeabi-v7a
+        uses: actions/upload-artifact@v7
+        with:
+          name: Arman-VPN-Android-armeabi-v7a
+          path: out/Arman-VPN-Android-armeabi-v7a.apk
+          if-no-files-found: error
+      - name: Artifact x86_64
+        uses: actions/upload-artifact@v7
+        with:
+          name: Arman-VPN-Android-x86_64
+          path: out/Arman-VPN-Android-x86_64.apk
+          if-no-files-found: error
+      - name: Artifact universal
+        uses: actions/upload-artifact@v7
+        with:
+          name: Arman-VPN-Android-universal
+          path: out/Arman-VPN-Android-universal.apk
+          if-no-files-found: error
+      - name: Artifact all three in one zip
+        uses: actions/upload-artifact@v7
+        with:
+          name: Arman-VPN-Android-apks
+          path: out/Arman-VPN-Android-apks.zip
           if-no-files-found: error
