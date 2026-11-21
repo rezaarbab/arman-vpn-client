@@ -9,6 +9,12 @@
 
 <h1 align="center">Arman VPN</h1>
 
+> **This fork is Android-only.** The upstream client's Go core, Mozilla accounts and
+> desktop builds are gone: the tunnel is the same Xray-based core, C gate and server
+> store the rest of this project uses, and the server list is fed by that worker. The
+> text below still describes upstream; where it names Mozilla, a Firefox Account, or
+> Windows, macOS and Linux, this fork does not do that. Licensed GPL-3.0.
+
 <p align="center"><b>Unofficial project.</b> Arman VPN is an independent project. It is not made, owned, sponsored, or endorsed by Mozilla, and is not affiliated with Mozilla in any way. See the <a href="#disclaimer">disclaimer</a>.</p>
 
 <div align="center">
