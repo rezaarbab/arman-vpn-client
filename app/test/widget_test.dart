@@ -1281,6 +1281,9 @@ void main() {
     expect(find.text('Auto'), findsOneWidget);
     expect(find.text('Frankfurt'), findsOneWidget);
     expect(find.text('Netherlands'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+    core.dispose();
   });
 
   testWidgets('the phone lists General first, then the groups', (tester) async {
@@ -2224,6 +2227,9 @@ void main() {
     // Mozilla's own notices for the same state are gone with its page.
     expect(find.text('No accounts yet'), findsNothing);
     expect(find.text('Netherlands'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+    core.dispose();
   });
 
   testWidgets('a refused location offers the recommended one', (tester) async {
