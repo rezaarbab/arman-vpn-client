@@ -116,7 +116,13 @@ jobs:
         working-directory: app
         run: |
           flutter pub get
-          flutter analyze
+          # Same reason as below: the analyzer's issues go to the log.
+          flutter analyze > analyze.log 2>&1 || {
+            grep -E '^ *(error|warning|info) ' analyze.log | head -80 \
+              | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::$line"; done
+            exit 1
+          }
+          tail -n 3 analyze.log
           # A failing test's text lives only in the run log, which is not
           # readable without a sign-in. The json reporter's events are turned
           # into annotations here, which are, so a red run says why.

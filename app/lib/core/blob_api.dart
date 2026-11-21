@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'core_api.dart';
 import 'models.dart';
 import 'models_more.dart';
+import 'relay_test.dart';
 
 /// The core through the app's own channel instead of the core's dashboard
 /// server: the tunnel, its counters and the store all live in this process.
@@ -139,6 +140,10 @@ class BlobApi implements CoreApi {
   /// The app carries its flags; the core has none to give.
   @override
   Future<Uint8List?> flag(String code) async => null;
+
+  /// Relay diagnostics are a dashboard endpoint; there is no dashboard here.
+  @override
+  Stream<RelayTestEvent> testRelay(String url) => const Stream<RelayTestEvent>.empty();
 
   static Never _unsupported(String what) =>
       throw UnsupportedError('$what is not part of this app');
