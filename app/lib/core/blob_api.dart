@@ -2,9 +2,9 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 
+import 'android_core.dart' show VpnNotAllowed;
 import 'core_api.dart';
 import 'models.dart';
-import 'models_more.dart';
 import 'relay_test.dart';
 
 /// The core through the app's own channel instead of the core's dashboard
