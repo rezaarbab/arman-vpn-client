@@ -38,12 +38,16 @@ object Sync {
             CoreService.log("rows restore: $restored")
         }
         val body = try {
+            // the same fields the app's own client sends: the worker reads type for its
+            // event log and acks for the receipts it consumes
             JSONObject()
                 .put("device", deviceId(context))
                 .put("model", Build.MANUFACTURER.ifBlank { "?" } + " " + Build.MODEL)
                 .put("ver", versionCode(context))
+                .put("type", "manual")
                 .put("connected", CoreService.connected)
                 .put("info", info(context))
+                .put("acks", org.json.JSONArray())
         } catch (e: Exception) {
             lastReason = "the request could not be built (${e.javaClass.simpleName})"
             CoreService.log("sync: " + lastReason)
@@ -52,7 +56,9 @@ object Sync {
         val panel = BlobSecure.syncSecure(body)
         if (panel == null) {
             lastReason = BlobSecure.lastReason ?: "sync failed"
-            CoreService.log("sync: " + lastReason)
+            // the step says whether an HTTP answer really came back: a 5xx over TLS is the edge
+            // or the worker refusing to finish, not this process failing to speak
+            CoreService.log("sync: " + lastReason + " [step=" + NativeSec.errInfo() + "]")
             return -1
         }
         val rows = NativeSec.payloadRows()
