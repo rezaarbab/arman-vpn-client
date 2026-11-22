@@ -1272,7 +1272,7 @@ void main() {
     core.start();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Servers'));
+    await tester.tap(find.text('Servers').first);
     await tester.pumpAndSettle();
 
     // The page is ours, grouped by the store's category, and none of Mozilla's
@@ -2118,7 +2118,7 @@ void main() {
     core.start();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Servers'));
+    await tester.tap(find.text('Servers').first);
     await tester.pumpAndSettle();
     // Accounts are Mozilla's problem; this page only knows our rows.
     expect(find.byKey(const Key('ir-servers')), findsOneWidget);
@@ -2382,7 +2382,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Settings'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Servers'));
+      await tester.tap(find.text('Servers').first);
       await tester.pumpAndSettle();
       expect(find.byType(AppBar), findsOneWidget);
       final wasOn = api.on;
@@ -2464,7 +2464,7 @@ void main() {
 
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Servers'));
+    await tester.tap(find.text('Servers').first);
     await tester.pumpAndSettle();
     // The servers page under its own top bar, with a back button.
     expect(find.byType(AppBar), findsOneWidget);

@@ -82,7 +82,7 @@ jobs:
           let events = 0;
           for (const l of lines) {
             if (!l.startsWith('{')) {
-              if (l.trim()) { tail.push(l); if (tail.length > 60) tail.shift(); }
+              if (l.trim()) { tail.push(l); if (tail.length > 80) tail.shift(); }
               continue;
             }
             let e;
@@ -104,7 +104,7 @@ jobs:
             process.exit(1);
           }
           for (const x of errs) {
-            const m = (x.name + ' — ' + x.msg).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A').slice(0, 6000);
+            const m = (x.name + ' — ' + x.msg).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A').slice(0, 12000);
             console.log('::error::' + m);
           }
           process.exit(errs.length ? 1 : 0);
