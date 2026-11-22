@@ -52,6 +52,7 @@ class _ServersPageState extends State<ServersPage> {
       _servers.load().then((_) async {
         if (!_alive) return;
         if (_servers.rows.isEmpty) await _servers.refresh();
+        if (_alive) _loadStats();
         if (!_alive || _picked != null || _servers.rows.isEmpty) return;
         // a list nobody has chosen from yet dials its first row
         final id = _servers.rows.first.id;
@@ -61,7 +62,7 @@ class _ServersPageState extends State<ServersPage> {
       _loadStats();
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _pollLive());
       // country flags: one row at a time, only while the tunnel is down
-      _flags = Timer.periodic(const Duration(milliseconds: 1200), (_) => _probeNext());
+      _flags = Timer.periodic(const Duration(milliseconds: 400), (_) => _probeNext());
     });
   }
 
@@ -69,7 +70,7 @@ class _ServersPageState extends State<ServersPage> {
     if (!_alive || _live['on'] == 'true') return;
     final rows = _servers.rows;
     while (_probeAt < rows.length && _cc.containsKey(rows[_probeAt].id)) _probeAt++;
-    if (_probeAt >= rows.length || _probeAt >= 150) return;
+    if (_probeAt >= rows.length || _probeAt >= 300) return;
     final id = rows[_probeAt].id;
     final cc = await IrRowsBridge.flag(id);
     if (!_alive) return;

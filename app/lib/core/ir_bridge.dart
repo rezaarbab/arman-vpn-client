@@ -39,6 +39,12 @@ class IrRowsBridge {
   }
 
   /// The two-letter country a probe measured for this row; "" until known.
+  static Future<void> resetTotals() async =>
+      await _ch.invokeMethod<void>('irTotalReset');
+
+  static Future<String> flagOf() async =>
+      await _ch.invokeMethod<String>('irFlagOf') ?? '';
+
   static Future<String> flag(String id) async =>
       await _ch.invokeMethod<String>('irFlag', {'id': id}) ?? '';
 

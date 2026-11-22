@@ -9,6 +9,8 @@ import 'package:flutter/services.dart';
 import '../app_settings.dart';
 import '../core/android_core.dart';
 import '../core/core_controller.dart';
+import '../core/ir_bridge.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../core/updates.dart';
 import '../core/models.dart';
 import '../core/ports.dart';
@@ -426,19 +428,14 @@ class _DesktopHome extends StatelessWidget {
             color: on ? accent : p.text,
           ),
         ),
-        // How long this session has been up: the poll redraws it.
+        // The session's length ticks by itself; the poll need not.
         if (connected && proxy?.startedAt != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text(
-              formatDuration(
-                l,
-                DateTime.now().difference(proxy!.startedAt!),
-              ),
-              textAlign: TextAlign.center,
-              style: theme.textTheme.labelMedium?.copyWith(color: p.muted),
-            ),
+          _Uptime(
+            since: proxy!.startedAt!,
+            style: theme.textTheme.labelMedium?.copyWith(color: p.muted),
           ),
+        if (status.selectionName.isNotEmpty)
+          _SelectedServer(status: status, palette: p),
         const SizedBox(height: 8),
         if (connected)
           Wrap(
@@ -1259,19 +1256,13 @@ class _PhoneHome extends StatelessWidget {
                   color: on ? accent : p.text,
                 ),
               ),
-              // How long this session has been up: the poll redraws it.
               if (connected && status.proxy?.startedAt != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Text(
-                    formatDuration(
-                      l,
-                      DateTime.now().difference(status.proxy!.startedAt!),
-                    ),
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.labelMedium?.copyWith(color: p.muted),
-                  ),
+                _Uptime(
+                  since: status.proxy!.startedAt!,
+                  style: theme.textTheme.labelMedium?.copyWith(color: p.muted),
                 ),
+              if (status.selectionName.isNotEmpty)
+                _SelectedServer(status: status, palette: p),
               const SizedBox(height: 8),
               if (connected)
                 Wrap(
@@ -2279,7 +2270,12 @@ class _HomeData extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: body),
-          Icon(Icons.chevron_right_rounded, color: p.muted),
+          IconButton(
+            tooltip: 'Reset traffic',
+            visualDensity: VisualDensity.compact,
+            icon: Icon(Icons.restart_alt_rounded, size: 18, color: p.muted),
+            onPressed: () => IrRowsBridge.resetTotals(),
+          ),
         ],
       ),
     );
@@ -2841,3 +2837,100 @@ class _UdpNoticeState extends State<_UdpNotice> {
 /// a day.
 
 
+
+
+/// The session's length, redrawn every second without touching the page.
+class _Uptime extends StatefulWidget {
+  const _Uptime({required this.since, this.style});
+  final DateTime since;
+  final TextStyle? style;
+  @override
+  State<_Uptime> createState() => _UptimeState();
+}
+
+class _UptimeState extends State<_Uptime> {
+  Timer? _t;
+  @override
+  void initState() {
+    super.initState();
+    // a test (or a phone with animations off) must not be kept awake by a clock
+    if (!WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations) {
+      _t = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+  @override
+  void dispose() {
+    _t?.cancel();
+    super.dispose();
+  }
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Text(
+          formatDuration(
+            AppLocalizations.of(context),
+            DateTime.now().difference(widget.since),
+          ),
+          textAlign: TextAlign.center,
+          style: widget.style,
+        ),
+      );
+}
+
+/// The server the tunnel dials: its flag (once a probe learned it) and its name.
+class _SelectedServer extends StatefulWidget {
+  const _SelectedServer({required this.status, required this.palette});
+  final CoreStatus status;
+  final _HomePalette palette;
+  @override
+  State<_SelectedServer> createState() => _SelectedServerState();
+}
+
+class _SelectedServerState extends State<_SelectedServer> {
+  String _cc = '';
+  String _for = '';
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+  @override
+  void didUpdateWidget(covariant _SelectedServer old) {
+    super.didUpdateWidget(old);
+    if (old.status.selection != widget.status.selection) _load();
+  }
+  Future<void> _load() async {
+    final id = widget.status.selection;
+    if (id.isEmpty) return;
+    _for = id;
+    try {
+      final cc = await IrRowsBridge.flagOf();
+      if (mounted && _for == id && cc.length == 2) {
+        setState(() => _cc = cc.toLowerCase());
+      }
+    } catch (_) {}
+  }
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final p = widget.palette;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_cc.isNotEmpty) ...[
+            SvgPicture.asset('assets/flags/$_cc.svg', width: 20, height: 15),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            widget.status.selectionName,
+            style: theme.textTheme.labelMedium?.copyWith(color: p.muted),
+          ),
+        ],
+      ),
+    );
+  }
+}

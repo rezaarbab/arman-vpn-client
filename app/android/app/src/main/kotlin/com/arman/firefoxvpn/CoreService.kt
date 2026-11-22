@@ -219,6 +219,11 @@ class CoreService : VpnService() {
         val id = pickedId(this)
         if (id.isBlank() || connectedSince <= 0L) return
         val ms = System.currentTimeMillis() - connectedSince
+        val p0 = prefs(this)
+        p0.edit()
+            .putLong("tot_up", p0.getLong("tot_up", 0L) + lastUp)
+            .putLong("tot_down", p0.getLong("tot_down", 0L) + lastDown)
+            .apply()
         prefs(this).edit()
             .putString("stats_" + id.take(64), "$ms|$lastUp|$lastDown")
             .apply()
@@ -355,6 +360,20 @@ class CoreService : VpnService() {
 
         data class Traffic(val up: Long, val down: Long, val upRate: Long, val downRate: Long)
 
+        /** Everything this app has carried, and this session's share of it. */
+        fun totalMap(context: Context): Map<String, Any?> {
+            val p = prefs(context)
+            return mapOf(
+                "up" to p.getLong("tot_up", 0L) + traffic.up,
+                "down" to p.getLong("tot_down", 0L) + traffic.down,
+            )
+        }
+
+        fun resetTotal(context: Context) {
+            prefs(context).edit().putLong("tot_up", 0L).putLong("tot_down", 0L).apply()
+            log("traffic total reset")
+        }
+
         /** The tunnel as the list shows it: which row, for how long, how much. */
         fun liveMap(): Map<String, Any?> = mapOf(
             "id" to pickedIdOfLastDial,
@@ -374,6 +393,8 @@ class CoreService : VpnService() {
             }
             return out
         }
+
+        fun picked(context: Context): String = pickedId(context)
 
         @Volatile
         var pickedIdOfLastDial = ""
@@ -463,8 +484,8 @@ class CoreService : VpnService() {
                     null
                 },
                 "traffic" to mapOf(
-                    "up" to t.up,
-                    "down" to t.down,
+                    "up" to (prefs(context).getLong("tot_up", 0L) + t.up),
+                    "down" to (prefs(context).getLong("tot_down", 0L) + t.down),
                     "up_rate" to t.upRate,
                     "down_rate" to t.downRate,
                 ),

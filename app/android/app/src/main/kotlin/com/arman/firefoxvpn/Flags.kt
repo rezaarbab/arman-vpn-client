@@ -15,11 +15,17 @@ import kotlin.random.Random
 object Flags {
     private val cache = HashMap<String, String>()
 
-    fun of(id: String): String = cache[id] ?: ""
+    fun of(context: Context, id: String): String {
+        cache[id]?.let { return it }
+        val v = context.getSharedPreferences("blob_core", Context.MODE_PRIVATE)
+            .getString("cc_" + id.take(64), "") ?: ""
+        if (v.length == 2) cache[id] = v
+        return v
+    }
 
     fun probe(context: Context, id: String): String {
         if (CoreService.on || id.isBlank()) return ""
-        cache[id]?.let { return it }
+        of(context, id).takeIf { it.isNotEmpty() }?.let { return it }
         val row = runCatching { NativeSec.rowOf(id) }.getOrDefault(-1)
         if (row < 0) return ""
         val port = 20000 + Random.nextInt(2000)
@@ -38,6 +44,8 @@ object Flags {
             ).trim().uppercase()
             if (code.length == 2) {
                 cache[id] = code
+                context.getSharedPreferences("blob_core", Context.MODE_PRIVATE)
+                    .edit().putString("cc_" + id.take(64), code).apply()
                 code
             } else {
                 ""

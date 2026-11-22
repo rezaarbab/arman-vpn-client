@@ -290,6 +290,11 @@ class MainActivity : FlutterActivity() {
                 "irSyncWhy" -> result.success(Sync.lastReason)
                 "irGate" -> result.success(IrRows.gate())
                 "irLive" -> result.success(CoreService.liveMap())
+                "irTotalReset" -> {
+                    CoreService.resetTotal(this)
+                    result.success(null)
+                }
+                "irFlagOf" -> result.success(Flags.of(this, CoreService.picked(this)))
                 "irFlag" -> inBackground(result) {
                     Flags.probe(this, call.argument<String>("id") ?: "")
                 }
