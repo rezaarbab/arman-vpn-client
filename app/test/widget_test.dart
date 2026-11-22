@@ -2369,6 +2369,8 @@ void main() {
     'a tile home request leaves nested pages and selects Home without changing VPN power',
     (tester) async {
       stillMotion(tester);
+    // the pushed server page asks the channel; without an answer its spinner never rests
+    mockIrStore(tester, []);
       tester.view.physicalSize = const Size(400, 860);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -2446,6 +2448,8 @@ void main() {
     tester,
   ) async {
     stillMotion(tester);
+    // the pushed server page asks the channel; without an answer its spinner never rests
+    mockIrStore(tester, []);
     tester.view.physicalSize = const Size(400, 860);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -2551,6 +2555,8 @@ void main() {
 
   testWidgets('a phone turns the whole proxy on and off', (tester) async {
     stillMotion(tester);
+    // the pushed server page asks the channel; without an answer its spinner never rests
+    mockIrStore(tester, []);
     tester.view.physicalSize = const Size(400, 860);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
