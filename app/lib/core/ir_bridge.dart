@@ -32,6 +32,18 @@ class IrRowsBridge {
   static Future<String> gate() async =>
       await _ch.invokeMethod<String>('irGate') ?? '';
 
+  /// The tunnel as the list shows it: id / on / ms / up / down.
+  static Future<Map<String, String>> live() async {
+    final m = await _ch.invokeMethod<Map>('irLive');
+    return {for (final e in (m ?? {}).entries) '${e.key}': '${e.value}'};
+  }
+
+  /// Each named row's last session: "ms|up|down".
+  static Future<Map<String, String>> stats(List<String> ids) async {
+    final m = await _ch.invokeMethod<Map>('irStats', {'ids': ids});
+    return {for (final e in (m ?? {}).entries) '${e.key}': '${e.value}'};
+  }
+
   static Future<Map<String, String>> row(int i) async {
     final m = await _ch.invokeMethod<Map>('irRow', {'i': i});
     return {for (final e in (m ?? {}).entries) '${e.key}': '${e.value}'};

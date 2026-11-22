@@ -287,6 +287,10 @@ class MainActivity : FlutterActivity() {
                 "irRowsAll" -> inBackground(result) { IrRows.all() }
                 "irSyncWhy" -> result.success(Sync.lastReason)
                 "irGate" -> result.success(IrRows.gate())
+                "irLive" -> result.success(CoreService.liveMap())
+                "irStats" -> inBackground(result) {
+                    CoreService.statsFor(this, call.argument<List<String>>("ids") ?: emptyList())
+                }
                 "irRows" -> result.success(IrRows.count())
                 "irRow" -> {
                     val i = call.argument<Int>("i") ?: -1

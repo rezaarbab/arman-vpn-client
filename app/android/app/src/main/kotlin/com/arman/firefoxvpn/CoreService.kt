@@ -107,6 +107,12 @@ class CoreService : VpnService() {
             return START_NOT_STICKY
         }
         startForegroundCompat()
+        if (!wantOn) {
+            // stopped on purpose: a stale start does not put the tunnel back up
+            stopForegroundCompat()
+            stopSelf()
+            return START_NOT_STICKY
+        }
         if (controller == null && tunFd < 0) dial()
         return START_NOT_STICKY
     }
@@ -120,6 +126,7 @@ class CoreService : VpnService() {
             dropTunnel("no server picked")
             return
         }
+        pickedIdOfLastDial = id
         val row = runCatching { NativeSec.rowOf(id) }.getOrDefault(-1)
         if (row < 0) {
             // the library does not have this server (yet): a sync brings it
@@ -164,6 +171,7 @@ class CoreService : VpnService() {
     private fun dropTunnel(reason: String) {
         lastFailure = reason
         log(reason)
+        keepStats()
         connected = false
         connectedSince = 0L
         main.removeCallbacks(stats)
@@ -173,6 +181,19 @@ class CoreService : VpnService() {
         } catch (_: Exception) {
         }
         controller = null
+        closeTun()
+        traffic = Traffic(0, 0, 0, 0)
+        on = false
+        wantOn = false
+        stopForegroundCompat()
+        stopSelf()
+        ConnectWidget.updateAll(this)
+        QuickTile.refresh(this)
+    }
+
+    /** The device the tunnel borrows: detachFd handed the raw fd to the core, and
+     *  an fd nobody closes keeps Android's VPN icon up with no tunnel behind it. */
+    private fun closeTun() {
         if (tunFd >= 0) {
             try {
                 ParcelFileDescriptor.adoptFd(tunFd).close()
@@ -180,12 +201,17 @@ class CoreService : VpnService() {
             }
             tunFd = -1
         }
-        traffic = Traffic(0, 0, 0, 0)
-        on = false
-        stopForegroundCompat()
-        stopSelf()
-        ConnectWidget.updateAll(this)
-        QuickTile.refresh(this)
+    }
+
+    /** What this session carried, kept per server, so the list can show it later. */
+    private fun keepStats() {
+        val id = pickedId(this)
+        if (id.isBlank() || connectedSince <= 0L) return
+        val ms = System.currentTimeMillis() - connectedSince
+        prefs(this).edit()
+            .putString("stats_" + id.take(64), "$ms|$lastUp|$lastDown")
+            .apply()
+        log("session kept")
     }
 
     private fun tick() {
@@ -252,6 +278,8 @@ class CoreService : VpnService() {
     }
 
     override fun onDestroy() {
+        keepStats()
+        closeTun()
         connected = false
         main.removeCallbacks(stats)
         main.removeCallbacks(onCoreUp)
@@ -302,7 +330,36 @@ class CoreService : VpnService() {
         var traffic = Traffic(0, 0, 0, 0)
             internal set
 
+        /** An explicit stop wins: a start intent that arrives after it stays out. */
+        @Volatile
+        var wantOn = false
+            internal set
+
         data class Traffic(val up: Long, val down: Long, val upRate: Long, val downRate: Long)
+
+        /** The tunnel as the list shows it: which row, for how long, how much. */
+        fun liveMap(): Map<String, Any?> = mapOf(
+            "id" to pickedIdOfLastDial,
+            "on" to connected,
+            "ms" to if (connectedSince > 0L) System.currentTimeMillis() - connectedSince else 0L,
+            "up" to traffic.up,
+            "down" to traffic.down,
+        )
+
+        /** The last session of each named row: "ms|up|down", or absent. */
+        fun statsFor(context: Context, ids: List<String>): Map<String, String> {
+            val p = prefs(context)
+            val out = HashMap<String, String>()
+            for (id in ids) {
+                val v = p.getString("stats_" + id.take(64), null) ?: continue
+                out[id] = v
+            }
+            return out
+        }
+
+        @Volatile
+        var pickedIdOfLastDial = ""
+            internal set
 
         fun dataDir(context: Context): File = File(context.filesDir, "core")
 
@@ -432,6 +489,7 @@ class CoreService : VpnService() {
         /** Turns the VPN on; the caller has the Android permission by now. */
         fun turnOn(context: Context) {
             lastFailure = ""
+            wantOn = true
             on = true
             connected = false
             // a store nobody has chosen from yet dials its first row
@@ -448,6 +506,7 @@ class CoreService : VpnService() {
         }
 
         fun turnOff(context: Context) {
+            wantOn = false
             on = false
             connected = false
             log("disconnected")
