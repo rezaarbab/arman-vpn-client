@@ -66,14 +66,7 @@ class _ServersPageState extends State<ServersPage> {
       });
       _loadCached();
       _loadStats();
-      if (!_autoSyncedOnce) {
-        _autoSyncedOnce = true;
-        _servers.refresh().then((_) {
-          if (!_alive) return;
-          _loadStats();
-          _pingAll();
-        });
-      }
+      _pingAll();
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _pollLive());
       // country flags: one row at a time, only while the tunnel is down
       _flags = Timer.periodic(const Duration(milliseconds: 400), (_) => _probeNext());

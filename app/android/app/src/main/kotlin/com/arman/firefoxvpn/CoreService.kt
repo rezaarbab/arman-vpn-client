@@ -477,11 +477,9 @@ class CoreService : VpnService() {
                 if (row >= 0) name = runCatching { NativeSec.payloadText(row, 1) }.getOrDefault("")
             }
             val t = traffic
-            val phase = when {
-                !on -> "off"
-                !connected -> "starting"
-                else -> "running"
-            }
+            // up is up: the core's start may be reported late (or never after the app
+            // returns from the background), and a green tunnel must not turn yellow for it
+            val phase = if (on) "running" else "off"
             return mapOf(
                 "state" to mapOf(
                     "phase" to phase,
@@ -498,7 +496,7 @@ class CoreService : VpnService() {
                     "up_rate" to t.upRate,
                     "down_rate" to t.downRate,
                 ),
-                "connect_pending" to (on && !connected),
+                "connect_pending" to false,
                 "connect_failure" to if (on) lastFailure else "",
                 "selection" to id,
                 "selection_name" to name,
