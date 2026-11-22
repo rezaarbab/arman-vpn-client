@@ -13,6 +13,7 @@ import org.json.JSONObject
  * take the session keys, ask for what changed, and let the library keep the rows. Every step
  * writes one line on the log page; a refusal says the status and the library's own reason.
  */
+// retry: a configuration-only Gradle failure is not this file's business
 object Sync {
 
     /** Why the last sync failed, as both the page and the log show it; "" for none. */
