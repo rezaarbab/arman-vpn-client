@@ -66,7 +66,7 @@ class _ServersPageState extends State<ServersPage> {
     try {
       final m = await IrRowsBridge.stats(ids);
       if (_alive && m.isNotEmpty) setState(() => _stats = m);
-    } catch (_: Object) {}
+    } catch (_) {}
   }
 
   Future<void> _pollLive() async {
@@ -81,7 +81,7 @@ class _ServersPageState extends State<ServersPage> {
           m['down'] != _live['down']) {
         setState(() => _live = m);
       }
-    } catch (_: Object) {}
+    } catch (_) {}
   }
 
   /// The line under a row: the live session while it is the tunnel, or the
