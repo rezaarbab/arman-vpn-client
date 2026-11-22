@@ -562,7 +562,8 @@ class CoreService : VpnService() {
         fun reconnect(context: Context) {
             if (!on) return
             context.stopService(Intent(context, CoreService::class.java))
-            mainHandler.postDelayed({ turnOn(context) }, 700L)
+            // immediately: a phone asking for another server does not wait
+            mainHandler.post({ turnOn(context) })
         }
 
         fun stopCore() {

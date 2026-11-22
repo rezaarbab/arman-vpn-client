@@ -385,13 +385,20 @@ class _DesktopHome extends StatelessWidget {
     final place = homeLocation(l, status, connected: connected);
     final mismatch = exitMismatchText(l, status);
     final cards = [
-      _PlaceCard(
-        palette: p,
-        compact: true,
-        place: place,
-        accent: accent,
-        onTap: onOpenServers,
-      ),
+      status.selectionName.isEmpty
+          ? _PlaceCard(
+              palette: p,
+              compact: true,
+              place: place,
+              accent: accent,
+              onTap: onOpenServers,
+            )
+          : _OurPlaceCard(
+              palette: p,
+              name: status.selectionName,
+              selection: status.selection,
+              onTap: onOpenServers,
+            ),
       _HomeData(
         status: status,
         palette: p,
@@ -434,8 +441,6 @@ class _DesktopHome extends StatelessWidget {
             since: proxy!.startedAt!,
             style: theme.textTheme.labelMedium?.copyWith(color: p.muted),
           ),
-        if (status.selectionName.isNotEmpty)
-          _SelectedServer(status: status, palette: p),
         const SizedBox(height: 8),
         if (connected)
           Wrap(
@@ -1261,8 +1266,6 @@ class _PhoneHome extends StatelessWidget {
                   since: status.proxy!.startedAt!,
                   style: theme.textTheme.labelMedium?.copyWith(color: p.muted),
                 ),
-              if (status.selectionName.isNotEmpty)
-                _SelectedServer(status: status, palette: p),
               const SizedBox(height: 8),
               if (connected)
                 Wrap(
@@ -1669,13 +1672,20 @@ class _PhoneHome extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(
-                        child: _PlaceCard(
-                          palette: p,
-                          place: place,
-                          accent: accent,
-                          onTap: onOpenServers,
-                          compact: true,
-                        ),
+                        child: status.selectionName.isEmpty
+                            ? _PlaceCard(
+                                palette: p,
+                                compact: true,
+                                place: place,
+                                accent: accent,
+                                onTap: onOpenServers,
+                              )
+                            : _OurPlaceCard(
+                                palette: p,
+                                name: status.selectionName,
+                                selection: status.selection,
+                                onTap: onOpenServers,
+                              ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -1690,12 +1700,19 @@ class _PhoneHome extends StatelessWidget {
                   ),
                 )
               else ...[
-                _PlaceCard(
-                  palette: p,
-                  place: place,
-                  accent: accent,
-                  onTap: onOpenServers,
-                ),
+                status.selectionName.isEmpty
+                    ? _PlaceCard(
+                        palette: p,
+                        place: place,
+                        accent: accent,
+                        onTap: onOpenServers,
+                      )
+                    : _OurPlaceCard(
+                        palette: p,
+                        name: status.selectionName,
+                        selection: status.selection,
+                        onTap: onOpenServers,
+                      ),
                 const SizedBox(height: 12),
                 _HomeData(status: status, palette: p, onTap: onOpenServers),
               ],
@@ -2879,16 +2896,23 @@ class _UptimeState extends State<_Uptime> {
       );
 }
 
-/// The server the tunnel dials: its flag (once a probe learned it) and its name.
-class _SelectedServer extends StatefulWidget {
-  const _SelectedServer({required this.status, required this.palette});
-  final CoreStatus status;
+/// The location card, filled with our own server: flag beside the name.
+class _OurPlaceCard extends StatefulWidget {
+  const _OurPlaceCard({
+    required this.palette,
+    required this.name,
+    required this.selection,
+    this.onTap,
+  });
   final _HomePalette palette;
+  final String name;
+  final String selection;
+  final VoidCallback? onTap;
   @override
-  State<_SelectedServer> createState() => _SelectedServerState();
+  State<_OurPlaceCard> createState() => _OurPlaceCardState();
 }
 
-class _SelectedServerState extends State<_SelectedServer> {
+class _OurPlaceCardState extends State<_OurPlaceCard> {
   String _cc = '';
   String _for = '';
   @override
@@ -2897,14 +2921,14 @@ class _SelectedServerState extends State<_SelectedServer> {
     _load();
   }
   @override
-  void didUpdateWidget(covariant _SelectedServer old) {
+  void didUpdateWidget(covariant _OurPlaceCard old) {
     super.didUpdateWidget(old);
-    if (old.status.selection != widget.status.selection) _load();
+    if (old.selection != widget.selection) _load();
   }
   Future<void> _load() async {
-    final id = widget.status.selection;
-    if (id.isEmpty) return;
+    final id = widget.selection;
     _for = id;
+    if (id.isEmpty) return;
     try {
       final cc = await IrRowsBridge.flagOf();
       if (mounted && _for == id && cc.length == 2) {
@@ -2916,19 +2940,48 @@ class _SelectedServerState extends State<_SelectedServer> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final p = widget.palette;
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
+    return _HomeCard(
+      palette: p,
+      onTap: widget.onTap,
+      compact: true,
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          if (_cc.isNotEmpty) ...[
-            SvgPicture.asset('assets/flags/$_cc.svg', width: 20, height: 15),
-            const SizedBox(width: 6),
-          ],
-          Text(
-            widget.status.selectionName,
-            style: theme.textTheme.labelMedium?.copyWith(color: p.muted),
+          SizedBox(
+            width: 34,
+            height: 24,
+            child: _cc.isEmpty
+                ? const SizedBox.shrink()
+                : ClipRRect(
+                    borderRadius: BorderRadius.circular(5),
+                    child: SvgPicture.asset('assets/flags/$_cc.svg', fit: BoxFit.cover),
+                  ),
           ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Server',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: p.muted,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  widget.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: p.text,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, color: p.muted),
         ],
       ),
     );

@@ -295,6 +295,14 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "irFlagOf" -> result.success(Flags.of(this, CoreService.picked(this)))
+                "irStatReset" -> {
+                    val id = call.argument<String>("id") ?: ""
+                    if (id.isNotBlank()) {
+                        getSharedPreferences("blob_core", MODE_PRIVATE).edit()
+                            .remove("stats_" + id.take(64)).apply()
+                    }
+                    result.success(null)
+                }
                 "irFlag" -> inBackground(result) {
                     Flags.probe(this, call.argument<String>("id") ?: "")
                 }

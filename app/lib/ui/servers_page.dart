@@ -226,7 +226,24 @@ class _ServersPageState extends State<ServersPage> {
                             ),
                         ],
                       ),
-                      trailing: _picked == row.id ? const Icon(Icons.check) : null,
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_live[row.id] == null && _stats[row.id] != null)
+                            IconButton(
+                              tooltip: 'Reset traffic',
+                              visualDensity: VisualDensity.compact,
+                              icon: Icon(Icons.restart_alt_rounded,
+                                  size: 18, color: theme.colorScheme.onSurfaceVariant),
+                              onPressed: () async {
+                                await IrRowsBridge.statReset(row.id);
+                                if (!_alive) return;
+                                setState(() => _stats = Map<String, String>.from(_stats)..remove(row.id));
+                              },
+                            ),
+                          if (_picked == row.id) const Icon(Icons.check),
+                        ],
+                      ),
                       onTap: () {
                         setState(() => _picked = row.id);
                         IrRowsBridge.pick(row.id).catchError((Object _) {});

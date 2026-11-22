@@ -42,6 +42,9 @@ class IrRowsBridge {
   static Future<void> resetTotals() async =>
       await _ch.invokeMethod<void>('irTotalReset');
 
+  static Future<void> statReset(String id) async =>
+      await _ch.invokeMethod<void>('irStatReset', {'id': id});
+
   static Future<String> flagOf() async =>
       await _ch.invokeMethod<String>('irFlagOf') ?? '';
 
