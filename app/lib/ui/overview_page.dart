@@ -2915,10 +2915,22 @@ class _OurPlaceCard extends StatefulWidget {
 class _OurPlaceCardState extends State<_OurPlaceCard> {
   String _cc = '';
   String _for = '';
+  Timer? _retry;
   @override
   void initState() {
     super.initState();
     _load();
+    if (!WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations) {
+      // until it is known: the first call may have to probe the server
+      _retry = Timer.periodic(const Duration(seconds: 2), (_) {
+        if (mounted && _cc.isEmpty) _load();
+      });
+    }
+  }
+  @override
+  void dispose() {
+    _retry?.cancel();
+    super.dispose();
   }
   @override
   void didUpdateWidget(covariant _OurPlaceCard old) {

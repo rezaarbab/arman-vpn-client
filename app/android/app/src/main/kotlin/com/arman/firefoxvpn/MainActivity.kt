@@ -294,7 +294,10 @@ class MainActivity : FlutterActivity() {
                     CoreService.resetTotal(this)
                     result.success(null)
                 }
-                "irFlagOf" -> result.success(Flags.of(this, CoreService.picked(this)))
+                "irFlagOf" -> inBackground(result) {
+                    val id = CoreService.picked(this)
+                    Flags.of(this, id).ifEmpty { Flags.probe(this, id) }
+                }
                 "irFlagsAll" -> result.success(Flags.all(this))
                 "irStatsAll" -> result.success(CoreService.statsAll(this))
                 "irStatReset" -> {

@@ -258,7 +258,6 @@ class _SettingsListState extends State<_SettingsList> {
       SettingsSection.general,
       SettingsSection.connection,
       SettingsSection.routing,
-      SettingsSection.dns,
       SettingsSection.relay,
       SettingsSection.fragment,
       SettingsSection.upstreamProxy,
@@ -298,7 +297,6 @@ class _SettingsListState extends State<_SettingsList> {
             Icons.alt_route_rounded,
             l.sectionRouting,
           ),
-          section(SettingsSection.dns, Icons.dns_rounded, l.sectionDns),
         ]),
       ?group(l.groupApp, [
           // The app's port and the web dashboard: computers only (a narrow

@@ -51,7 +51,6 @@ class _ServersPageState extends State<ServersPage> {
       // or when the library is still empty (nothing to read).
       _servers.load().then((_) async {
         if (!_alive) return;
-        if (_servers.rows.isEmpty) await _servers.refresh();
         if (_alive) _loadStats();
         if (!_alive || _picked != null || _servers.rows.isEmpty) return;
         // a list nobody has chosen from yet dials its first row
