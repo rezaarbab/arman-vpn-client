@@ -144,6 +144,15 @@ class CoreService : VpnService() {
                 .addDnsServer("1.1.1.1")
                 .addRoute("0.0.0.0", 0)
                 .addDisallowedApplication(packageName)
+            var kept = 1
+            for (pkg in appSet(this, BYPASS)) {
+                try {
+                    builder.addDisallowedApplication(pkg)
+                    kept++
+                } catch (_: Exception) {
+                }
+            }
+            log("apps outside the tunnel: $kept")
             val tun = builder.setBlocking(true).establish()
             if (tun == null) {
                 dropTunnel("the VPN device was refused")
@@ -439,9 +448,20 @@ class CoreService : VpnService() {
 
         fun appMode(context: Context): String = MODE_EXCLUDE
 
-        fun appSet(context: Context, kind: String): Set<String> = emptySet()
+        /** The apps the page ticked: they do not go through the tunnel. */
+        fun appSet(context: Context, kind: String): Set<String> {
+            if (kind != BYPASS) return emptySet()
+            val raw = prefs(context).getString("apps_bypass", "") ?: ""
+            if (raw.isBlank()) return emptySet()
+            return raw.split('\n').filter { it.isNotBlank() }.toSet()
+        }
 
-        fun setAppRouting(context: Context, mode: String, sets: Map<String, Set<String>>) {}
+        fun setAppRouting(context: Context, mode: String, sets: Map<String, Set<String>>) {
+            // both layouts save their ticks in the bypass row; only that row is applied
+            val bypass = sets[BYPASS] ?: sets[ONLY] ?: emptySet()
+            prefs(context).edit().putString("apps_bypass", bypass.joinToString("\n")).apply()
+            log("per-app: " + bypass.size + " apps stay outside the tunnel")
+        }
 
         fun suggest(context: Context, force: Boolean): Boolean = false
 
