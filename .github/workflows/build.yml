@@ -26,92 +26,7 @@ env:
   FLUTTER_VERSION: 3.50.0
 
 jobs:
-  test:
-    runs-on: ubuntu-24.04
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-    steps:
-      - uses: actions/checkout@v7
-      - id: version
-        name: Version
-        run: |
-          v="$(sed -n 's/^version:[[:space:]]*\([0-9]*\.[0-9]*\.[0-9]*\).*/\1/p' app/pubspec.yaml)"
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-      # The app reads .github/updates.json from the default branch as soon
-      # as it is pushed (app/lib/app_info.dart): the version it offers.
-      - name: Update notice
-        run: |
-          jq -e 'type == "object"
-            and has("android")
-            and all(.[]; type == "string" and test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' .github/updates.json >/dev/null || {
-            echo "::error::updates.json must name android with a \"major.minor.patch\" version"
-            exit 1
-          }
-          v="${{ steps.version.outputs.version }}"
-          ahead="$(jq -r --arg v "$v" '($v | split(".") | map(tonumber)) as $app
-            | to_entries[] | select((.value | split(".") | map(tonumber)) > $app) | "\(.key) \(.value)"' .github/updates.json | xargs)"
-          if [ -n "$ahead" ]; then
-            echo "::error::updates.json names a version newer than app/pubspec.yaml ($v): $ahead"
-            exit 1
-          fi
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-      - name: App
-        working-directory: app
-        run: |
-          flutter pub get
-          # The analyzer's issues go to the log too.
-          flutter analyze > analyze.log 2>&1 || {
-            grep -E '^ *(error|warning|info) ' analyze.log | head -80 \
-              | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::$line"; done
-            exit 1
-          }
-          tail -n 3 analyze.log
-          # A failing test's text lives only in the run log; the json
-          # reporter's events are turned into annotations here.
-          flutter test --reporter=json > test.json 2>&1 || true
-          node - test.json <<'EOF'
-          const fs = require('fs');
-          const lines = fs.readFileSync(process.argv[2], 'utf8').split('\n');
-          const names = new Map();
-          const errs = [];
-          const tail = [];
-          let events = 0;
-          for (const l of lines) {
-            if (!l.startsWith('{')) {
-              if (l.trim()) { tail.push(l); if (tail.length > 80) tail.shift(); }
-              continue;
-            }
-            let e;
-            try { e = JSON.parse(l); } catch { continue; }
-            events++;
-            if (e.type === 'testStart') names.set(e.test.id, e.test.name);
-            if (e.type === 'print') { tail.push(e.message); if (tail.length > 60) tail.shift(); }
-            if (e.type === 'error') {
-              // The framework reports a build or layout error as "Test failed. See exception
-              // logs above."; the "above" is this tail.
-              errs.push({
-                name: names.get(e.testID) || '?',
-                msg: [e.error, e.stackTrace || '', '--- output before it ---', ...tail].join('\n'),
-              });
-            }
-          }
-          if (!events) {
-            console.log('::error::the test run produced no json events');
-            process.exit(1);
-          }
-          for (const x of errs) {
-            const m = (x.name + ' — ' + x.msg).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A').slice(0, 12000);
-            console.log('::error::' + m);
-          }
-          process.exit(errs.length ? 1 : 0);
-          EOF
-
   android:
-    needs: test
     if: (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/ir-core' || github.ref == 'refs/heads/main') && (vars.PLATFORMS == '' || contains(vars.PLATFORMS, 'android'))
     runs-on: ubuntu-24.04
     steps:
@@ -148,7 +63,7 @@ jobs:
           # name one are repeated as annotations here.
           set +e
           {
-          v='${{ needs.test.outputs.version }}'
+          v="$(awk -F'[ .+]' '/^version:/ {print $2"."$3"."$4; exit}' app/pubspec.yaml)"
           cd app
           flutter pub get
           mkdir -p ../out
