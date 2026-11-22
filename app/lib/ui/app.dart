@@ -258,6 +258,19 @@ class _ShellState extends State<Shell> {
         _page = pages[i];
         _settingsOpening = null;
       });
+      // Android (a phone, or a tablet in either orientation) and a narrow
+      // window: the phone layout, Home and Settings. The computer layout
+      // offers computer-only choices, such as Windows' system proxy.
+      if (Platform.isAndroid || MediaQuery.sizeOf(context).width < 640) {
+        return MobileShell(
+          core: core,
+          settings: widget.settings,
+          banner: core.unavailable != null && status != null
+              ? const _LostBanner()
+              : null,
+          noCore: status == null ? _NoCore(core: core) : null,
+        );
+      }
       return Scaffold(
         body: AnnouncementOverlay(
           settings: widget.settings,
