@@ -127,6 +127,7 @@ class CoreService : VpnService() {
             return
         }
         shownName = runCatching { NativeSec.payloadText(row, 1) }.getOrDefault("")
+        log("dialing")
         try {
             val builder = Builder()
                 .setSession("Blob")
