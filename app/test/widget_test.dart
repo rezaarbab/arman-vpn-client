@@ -433,7 +433,7 @@ void mockIrStore(WidgetTester tester, List<Map<String, Object?>> rows) {
 
 void main() {
   _connectingRingTests();
-  testWidgets('shows the state, turns the VPN off, lists accounts', (
+  testWidgets('shows the state, turns the VPN off, and shows the traffic', (
     tester,
   ) async {
     stillMotion(tester);
@@ -456,7 +456,7 @@ void main() {
     expect(find.text('Recommended location'), findsOneWidget);
     expect(find.textContaining('Amsterdam'), findsNothing);
     // The data used rather than the email.
-    expect(find.text('Data used'), findsOneWidget);
+    expect(find.text('Traffic'), findsOneWidget);
     expect(find.textContaining('@example.com'), findsNothing);
     // The two modes, picked by name; System proxy is on.
     expect(find.text('Proxy'), findsOneWidget);
@@ -491,11 +491,6 @@ void main() {
     expect(api.on, isTrue);
     expect(find.text('Connected'), findsOneWidget);
 
-    await tester.tap(find.text('Accounts').first);
-    await tester.pumpAndSettle();
-    expect(find.text('alice@example.com'), findsOneWidget);
-    expect(find.text('Needs sign-in'), findsOneWidget);
-    expect(find.text('Sign in again'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
     core.dispose();
@@ -1346,107 +1341,6 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     core.dispose();
   });
-
-  testWidgets('the accounts page offers saving and taking in a backup', (
-    tester,
-  ) async {
-    stillMotion(tester);
-    tester.view.physicalSize = const Size(1200, 1400);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-
-    final core = CoreController(
-      () async => FakeApi(),
-      pollInterval: const Duration(hours: 1),
-    );
-    await tester.pumpWidget(VpnApp(core: core, settings: AppSettings()));
-    core.start();
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Accounts').first);
-    await tester.pumpAndSettle();
-
-    // Beside Add account, in plain sight.
-    final more = find.byIcon(Icons.more_vert_rounded);
-    expect(more, findsOneWidget);
-    await tester.tap(more);
-    await tester.pumpAndSettle();
-    expect(find.text('Save a backup'), findsOneWidget);
-    expect(find.text('Import a backup'), findsOneWidget);
-    expect(find.text('Backup'), findsNothing);
-    await tester.tapAt(Offset.zero);
-    await tester.pumpAndSettle();
-    expect(find.text('Save a backup'), findsNothing);
-
-    await tester.pumpWidget(const SizedBox());
-    core.dispose();
-  });
-
-  testWidgets(
-    'the accounts page shows quota bars and switching for two accounts',
-    (tester) async {
-      stillMotion(tester);
-      tester.view.physicalSize = const Size(1200, 1400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-
-      final api = FakeApi();
-      api.accountsJson.last.remove('usage');
-      final core = CoreController(
-        () async => api,
-        pollInterval: const Duration(hours: 1),
-      );
-      await tester.pumpWidget(VpnApp(core: core, settings: AppSettings()));
-      core.start();
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Accounts').first);
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('0 MB'), findsOneWidget);
-      expect(
-        tester
-            .widgetList<QuotaBar>(find.byType(QuotaBar))
-            .map((bar) => bar.percent),
-        [40.0, 0.0],
-      );
-      final row = find.text('Account switching');
-      expect(row, findsOneWidget);
-      expect(
-        find.descendant(
-          of: find.ancestor(of: row, matching: find.byType(ListTile)),
-          matching: find.textContaining('90%'),
-        ),
-        findsOneWidget,
-      );
-
-      await tester.tap(row);
-      await tester.pumpAndSettle();
-      final field = find.descendant(
-        of: find.byType(AlertDialog),
-        matching: find.byType(TextField),
-      );
-      expect(tester.widget<TextField>(field).controller!.text, '90');
-      await tester.enterText(field, '0');
-      await tester.tap(find.text('Save'));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('from 1 to 100'), findsOneWidget);
-      expect(api.config['accounts'], isNull);
-      await tester.enterText(field, '70');
-      await tester.tap(find.text('Save'));
-      await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
-      final accounts = api.config['accounts'] as Map<String, Object?>;
-      expect(accounts['switch_threshold_percent'], 70);
-
-      // One account: nothing to switch to.
-      api.accountsJson.removeLast();
-      await core.refresh(accountsToo: true);
-      await tester.pumpAndSettle();
-      expect(row, findsNothing);
-
-      await tester.pumpWidget(const SizedBox());
-      core.dispose();
-    },
-  );
 
   testWidgets('a computer lists the settings in the same groups', (
     tester,
@@ -2462,16 +2356,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('DNS'), findsOneWidget);
 
-    // The accounts page says where to make an account.
-    await tester.tap(
-      find.descendant(
-        of: find.byType(NavigationRail),
-        matching: find.text('Accounts'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text("Don't have a Firefox Account?"), findsOneWidget);
-    expect(find.text('accounts.firefox.com'), findsOneWidget);
 
     await tester.tap(find.text('About'));
     await tester.pumpAndSettle();
@@ -2499,7 +2383,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Settings'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Accounts'));
+      await tester.tap(find.text('Servers'));
       await tester.pumpAndSettle();
       expect(find.byType(AppBar), findsOneWidget);
       final wasOn = api.on;
@@ -2510,7 +2394,7 @@ void main() {
         tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
         0,
       );
-      expect(find.text('Data used'), findsOneWidget);
+      expect(find.text('Traffic'), findsOneWidget);
       expect(api.on, wasOn);
       await tester.pumpWidget(const SizedBox());
       core.dispose();
@@ -2542,8 +2426,8 @@ void main() {
           expect(theme.textTheme.labelLarge!.fontFamily, expected);
           for (final label
               in language == 'en'
-                  ? ['Overview', 'Accounts']
-                  : ['نمای کلی', 'حساب‌ها']) {
+                  ? ['Overview', 'Servers']
+                  : ['نمای کلی', 'سرورها']) {
             final text = find.descendant(of: rail, matching: find.text(label));
             expect(
               DefaultTextStyle.of(tester.element(text)).style.fontFamily,
@@ -2581,11 +2465,11 @@ void main() {
 
     await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Accounts'));
+    await tester.tap(find.text('Servers'));
     await tester.pumpAndSettle();
-    // The accounts page under its own top bar, with a back button.
+    // The servers page under its own top bar, with a back button.
     expect(find.byType(AppBar), findsOneWidget);
-    expect(find.text('alice@example.com'), findsOneWidget);
+    expect(find.byKey(const Key('ir-servers')), findsOneWidget);
     await tester.pageBack();
     await tester.pumpAndSettle();
     expect(find.text('Network'), findsOneWidget);
@@ -2595,7 +2479,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(popped, isTrue);
     expect(find.text('Network'), findsNothing);
-    expect(find.text('Data used'), findsOneWidget);
+    expect(find.text('Traffic'), findsOneWidget);
 
     // Logs cleared stay cleared when the page opens again.
     await tester.tap(find.text('Settings'));
@@ -2696,7 +2580,7 @@ void main() {
     // The data used, in the ring and in large type; the email is not on
     // the phone's home.
     expect(find.textContaining('40%'), findsOneWidget);
-    expect(find.text('Data used'), findsOneWidget);
+    expect(find.text('Traffic'), findsOneWidget);
     expect(find.textContaining('20.0 GB'), findsOneWidget);
     expect(find.textContaining('@example.com'), findsNothing);
     // Apps in the VPN trying refused ports are no news on the phone.
@@ -2872,35 +2756,6 @@ void main() {
     await tester.pump(const Duration(seconds: 61));
     await tester.pumpAndSettle();
     expect(notice, findsNothing);
-
-    await tester.pumpWidget(const SizedBox());
-    core.dispose();
-  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
-
-  testWidgets('connecting without an account opens the accounts page', (
-    tester,
-  ) async {
-    stillMotion(tester);
-    tester.view.physicalSize = const Size(1200, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-
-    final api = FakeApi()..hasAccounts = false;
-    final core = CoreController(
-      () async => api,
-      pollInterval: const Duration(hours: 1),
-    );
-    await tester.pumpWidget(VpnApp(core: core, settings: AppSettings()));
-    core.start();
-    await tester.pumpAndSettle();
-
-    // Waiting for an account counts as on: the button would disconnect.
-    await tester.tap(find.byTooltip('Click to disconnect'));
-    await tester.pumpAndSettle();
-    // The page that explains accounts, not the sign-in form.
-    expect(find.byType(Dialog), findsNothing);
-    expect(find.text('No accounts yet'), findsOneWidget);
-    expect(find.text('Add account'), findsWidgets);
 
     await tester.pumpWidget(const SizedBox());
     core.dispose();

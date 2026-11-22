@@ -14,7 +14,6 @@ import '../core/models.dart';
 import '../core/ports.dart';
 import '../l10n/app_localizations.dart';
 import '../platform.dart';
-import 'browser_signin.dart';
 import 'bypass_apps_page.dart';
 import 'connection_mode.dart';
 import 'format.dart';
@@ -30,7 +29,6 @@ class OverviewPage extends StatelessWidget {
     required this.core,
     required this.settings,
     this.onOpenServers,
-    this.onOpenAccounts,
     this.onOpenConnection,
     this.onOpenUpstreamProxy,
     this.phone = false,
@@ -45,7 +43,6 @@ class OverviewPage extends StatelessWidget {
   /// Opens the server list and the accounts from the home page's cards (a
   /// page on the phone, a tab on the computer).
   final VoidCallback? onOpenServers;
-  final VoidCallback? onOpenAccounts;
 
   /// Opens the connection settings, when Mozilla's servers are blocked.
   final VoidCallback? onOpenConnection;
@@ -62,7 +59,6 @@ class OverviewPage extends StatelessWidget {
         showIp: showIp,
         settings: settings,
         onOpenServers: onOpenServers,
-        onOpenAccounts: onOpenAccounts,
         onOpenConnection: onOpenConnection,
         onOpenUpstreamProxy: onOpenUpstreamProxy,
       );
@@ -73,7 +69,6 @@ class OverviewPage extends StatelessWidget {
       showIp: showIp,
       settings: settings,
       onOpenServers: onOpenServers,
-      onOpenAccounts: onOpenAccounts,
       onOpenConnection: onOpenConnection,
       onOpenUpstreamProxy: onOpenUpstreamProxy,
     );
@@ -238,21 +233,6 @@ class _ProblemBox extends StatelessWidget {
   }
 }
 
-/// The accounts page, from the power button without an account; the
-/// sign-in form when no page is given.
-void _openAccounts(
-  BuildContext context,
-  CoreController core,
-  AppSettings settings,
-  VoidCallback? onOpenAccounts,
-) {
-  if (onOpenAccounts != null) {
-    onOpenAccounts();
-  } else {
-    startAddAccount(context, core, settings);
-  }
-}
-
 /// The core handles the initial connection while an explicit attempt is pending.
 void _testAfterPowerOn(CoreController core) {
   final status = core.status;
@@ -275,7 +255,6 @@ class _DesktopHome extends StatelessWidget {
     required this.showIp,
     required this.settings,
     this.onOpenServers,
-    this.onOpenAccounts,
     this.onOpenConnection,
     this.onOpenUpstreamProxy,
   });
@@ -287,7 +266,6 @@ class _DesktopHome extends StatelessWidget {
   final bool showIp;
   final AppSettings settings;
   final VoidCallback? onOpenServers;
-  final VoidCallback? onOpenAccounts;
   final VoidCallback? onOpenConnection;
   final VoidCallback? onOpenUpstreamProxy;
 
@@ -415,7 +393,7 @@ class _DesktopHome extends StatelessWidget {
       _HomeData(
         status: status,
         palette: p,
-        onTap: onOpenAccounts,
+        onTap: onOpenServers,
         compact: true,
       ),
     ];
@@ -430,10 +408,9 @@ class _DesktopHome extends StatelessWidget {
             busy: core.switchingProxy,
             connecting: confirming || status.state.phase == Phase.starting,
             tooltip: on ? l.tapToDisconnect : l.tapToConnect,
-            // No account yet: the accounts page, which explains them.
-            onPressed: () => status.totalAccounts == 0
-                ? _openAccounts(context, core, settings, onOpenAccounts)
-                : runShowingErrors(context, () => _power(!on)),
+            // The tunnel is the only thing between the button and the phone:
+            // there are no accounts to open first.
+            onPressed: () => runShowingErrors(context, () => _power(!on)),
           ),
         ),
         const SizedBox(height: 10),
@@ -611,13 +588,6 @@ class _DesktopHome extends StatelessWidget {
         _UpdateNotice(core: core, settings: settings, palette: p),
         _UdpNotice(status: status, settings: settings, palette: p),
         _Notices(notices: homeNotices(status.notices)),
-        _LowQuotaNotice(
-          core: core,
-          status: status,
-          settings: settings,
-          connected: connected,
-          palette: p,
-        ),
         // Side by side when there is room.
         LayoutBuilder(
           builder: (context, box) => box.maxWidth >= 560
@@ -1051,7 +1021,6 @@ class _PhoneHome extends StatelessWidget {
     required this.showIp,
     required this.settings,
     this.onOpenServers,
-    this.onOpenAccounts,
     this.onOpenConnection,
     this.onOpenUpstreamProxy,
   });
@@ -1063,7 +1032,6 @@ class _PhoneHome extends StatelessWidget {
   final bool showIp;
   final AppSettings settings;
   final VoidCallback? onOpenServers;
-  final VoidCallback? onOpenAccounts;
   final VoidCallback? onOpenConnection;
   final VoidCallback? onOpenUpstreamProxy;
 
@@ -1265,11 +1233,8 @@ class _PhoneHome extends StatelessWidget {
                   busy: core.switchingProxy,
                   connecting: connecting,
                   tooltip: press,
-                  // No account yet: the accounts page, which explains
-                  // them and links to Mozilla's sign-up.
-                  onPressed: () => status.totalAccounts == 0
-                      ? _openAccounts(context, core, settings, onOpenAccounts)
-                      : runShowingErrors(context, () => _toggle(on)),
+                  // There are no accounts to open first: the button is the tunnel.
+                  onPressed: () => runShowingErrors(context, () => _toggle(on)),
                 ),
               ),
               SizedBox(height: short ? 8 : 14),
@@ -1681,13 +1646,6 @@ class _PhoneHome extends StatelessWidget {
               _UpdateNotice(core: core, settings: settings, palette: p),
               _UdpNotice(status: status, settings: settings, palette: p),
               _Notices(notices: homeNotices(status.notices)),
-              _LowQuotaNotice(
-                core: core,
-                status: status,
-                settings: settings,
-                connected: connected,
-                palette: p,
-              ),
               if (sideBySide)
                 IntrinsicHeight(
                   child: Row(
@@ -1707,7 +1665,7 @@ class _PhoneHome extends StatelessWidget {
                         child: _HomeData(
                           status: status,
                           palette: p,
-                          onTap: onOpenAccounts,
+                          onTap: onOpenServers,
                           compact: true,
                         ),
                       ),
@@ -1722,7 +1680,7 @@ class _PhoneHome extends StatelessWidget {
                   onTap: onOpenServers,
                 ),
                 const SizedBox(height: 12),
-                _HomeData(status: status, palette: p, onTap: onOpenAccounts),
+                _HomeData(status: status, palette: p, onTap: onOpenServers),
               ],
             ],
           ),
@@ -2256,136 +2214,38 @@ class _HomeData extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final p = palette;
     final muted = theme.textTheme.bodySmall?.copyWith(color: p.muted);
-    final a = status.activeAccount;
-    final usage = a?.usage;
-    Widget body;
-    if (a != null && usage != null && usage.unlimited) {
-      // The same shape as a quota that has a limit, so the card keeps its
-      // height and its weight on the page: the ring is simply full, with the
-      // sign for "no limit" in the middle instead of a percentage.
-      body = Row(
-        children: [
-          SizedBox.square(
-            dimension: _homeCardContent(compact),
-            child: CustomPaint(
-              painter: _QuotaRing(
-                value: 1,
-                color: theme.colorScheme.primary,
-                track: p.text.withValues(alpha: 0.08),
+    // The card used to show Mozilla's account quota. This client has no
+    // accounts: the same card shows what the tunnel carried instead.
+    final t = status.traffic;
+    final body = Row(
+      children: [
+        Icon(Icons.stacked_line_chart_rounded, color: p.muted),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Traffic', style: muted),
+              Text(
+                '↑ ${formatBytes(t?.up ?? 0)}  ↓ ${formatBytes(t?.down ?? 0)}',
+                style:
+                    (compact
+                            ? theme.textTheme.titleSmall
+                            : theme.textTheme.titleMedium)
+                        ?.copyWith(fontWeight: FontWeight.w700, color: p.text),
               ),
-              child: Center(
-                child: Icon(
-                  Icons.all_inclusive_rounded,
-                  size: compact ? 20 : 26,
-                  color: theme.colorScheme.primary,
-                ),
+              Text(
+                '↑ ${formatBytes(t?.upRate ?? 0)}/s  ↓ ${formatBytes(t?.downRate ?? 0)}/s',
+                style: muted,
               ),
-            ),
+            ],
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(l.monthlyData, style: muted),
-                Text(
-                  l.unlimited,
-                  style:
-                      (compact
-                              ? theme.textTheme.titleSmall
-                              : theme.textTheme.titleMedium)
-                          ?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: p.text,
-                          ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-    } else if (a == null || usage == null) {
-      body = Row(
-        children: [
-          Icon(
-            a == null
-                ? Icons.person_add_alt_rounded
-                : Icons.all_inclusive_rounded,
-            color: p.muted,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(
-              a == null ? l.noActiveAccount : l.quotaNotRead,
-              style: theme.textTheme.titleMedium?.copyWith(color: p.text),
-            ),
-          ),
-        ],
-      );
-    } else {
-      final used = usage.usedBytes.clamp(0, usage.limitBytes);
-      final fraction = usage.limitBytes == 0 ? 0.0 : used / usage.limitBytes;
-      final color = quotaColor(fraction * 100, status.thresholdPercent);
-      body = Row(
-        children: [
-          SizedBox.square(
-            dimension: _homeCardContent(compact),
-            child: CustomPaint(
-              painter: _QuotaRing(
-                value: fraction,
-                color: color,
-                track: p.text.withValues(alpha: 0.08),
-              ),
-              child: Center(
-                child: Text(
-                  ltr('${(fraction * 100).round()}%'),
-                  style:
-                      (compact
-                              ? theme.textTheme.labelMedium
-                              : theme.textTheme.titleSmall)
-                          ?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: p.text,
-                          ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(l.dataUsedTitle, style: muted),
-                Text(
-                  formatBytes(used),
-                  style:
-                      (compact
-                              ? theme.textTheme.titleLarge
-                              : theme.textTheme.headlineSmall)
-                          ?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: p.text,
-                          ),
-                ),
-                Text(
-                  [
-                    l.dataLeftOf(formatBytes(usage.limitBytes)),
-                    if (usage.resetAt != null)
-                      l.resets(formatDate(l, usage.resetAt!)),
-                  ].join(' · '),
-                  style: muted,
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-    }
+        ),
+      ],
+    );
     return _HomeCard(
       palette: p,
       onTap: onTap,
@@ -2398,38 +2258,6 @@ class _HomeData extends StatelessWidget {
       ),
     );
   }
-}
-
-class _QuotaRing extends CustomPainter {
-  _QuotaRing({required this.value, required this.color, required this.track});
-
-  final double value;
-  final Color color;
-  final Color track;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const stroke = 6.0;
-    final rect = (Offset.zero & size).deflate(stroke / 2);
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round;
-    canvas.drawArc(rect, 0, 2 * math.pi, false, paint..color = track);
-    if (value > 0) {
-      canvas.drawArc(
-        rect,
-        -math.pi / 2,
-        2 * math.pi * value.clamp(0.0, 1.0),
-        false,
-        paint..color = color,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_QuotaRing old) =>
-      old.value != value || old.color != color || old.track != track;
 }
 
 /// The proxy's address on the local network, for other devices; a tap
@@ -2985,161 +2813,5 @@ class _UdpNoticeState extends State<_UdpNotice> {
 /// no other account to take over: adding an account gives another month's
 /// data. Shown once per connection, for a minute; closed, it stays away for
 /// a day.
-class _LowQuotaNotice extends StatefulWidget {
-  const _LowQuotaNotice({
-    required this.core,
-    required this.status,
-    required this.settings,
-    required this.connected,
-    required this.palette,
-  });
 
-  final CoreController core;
-  final CoreStatus status;
-  final AppSettings settings;
-  final bool connected;
-  final _HomePalette palette;
 
-  @override
-  State<_LowQuotaNotice> createState() => _LowQuotaNoticeState();
-}
-
-class _LowQuotaNoticeState extends State<_LowQuotaNotice> {
-  /// Below this much left, the account is running out.
-  static const _left = 5 << 30;
-  static const _showFor = Duration(seconds: 60);
-  static const _quiet = Duration(hours: 24);
-
-  /// The connection it was shown for (the proxy's start), and whether its
-  /// minute is over: once per connection, also when the home page is
-  /// built again meanwhile.
-  static DateTime? _shownFor;
-  static bool _started = false;
-  static bool _over = false;
-  static Timer? _minute;
-  static final _changed = ValueNotifier(0);
-
-  @override
-  void initState() {
-    super.initState();
-    _changed.addListener(_rebuild);
-  }
-
-  @override
-  void dispose() {
-    _changed.removeListener(_rebuild);
-    super.dispose();
-  }
-
-  void _rebuild() {
-    if (mounted) setState(() {});
-  }
-
-  bool get _due {
-    final active = widget.status.activeAccount;
-    final usage = active?.usage;
-    if (!widget.connected || active == null || usage == null) return false;
-    if (usage.unlimited || usage.limitBytes == 0) return false;
-    if (usage.remainingBytes >= _left) return false;
-    // Another account that can take over: the app moves to it by itself.
-    final others = widget.core.accounts?.accounts ?? const <Account>[];
-    final spare = others.any(
-      (a) =>
-          a.id != active.id &&
-          a.enabled &&
-          a.status == AccountStatus.ready &&
-          (a.usage?.unlimited == true ||
-              (a.usage?.remainingBytes ?? 0) >= _left),
-    );
-    if (spare) return false;
-    final closed = widget.settings.lowQuotaDismissedAt;
-    return closed == null || DateTime.now().difference(closed) >= _quiet;
-  }
-
-  /// Whether to show it now; the minute starts at the first look of a
-  /// connection.
-  bool _visible() {
-    if (!_due) return false;
-    final connection = widget.status.proxy?.startedAt;
-    if (!_started || _shownFor != connection) {
-      _started = true;
-      _shownFor = connection;
-      _over = false;
-      _minute?.cancel();
-      _minute = Timer(_showFor, () {
-        _over = true;
-        _changed.value++;
-      });
-    }
-    return !_over;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_visible()) return const SizedBox.shrink();
-    final l = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final p = widget.palette;
-    final usage = widget.status.activeAccount!.usage!;
-    String rounded(int bytes) => formatBytes(bytes).replaceAll('.0 ', ' ');
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: StatusColors.busy.withValues(alpha: p.dark ? 0.16 : 0.12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: StatusColors.busy.withValues(alpha: 0.4)),
-        ),
-        child: Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(14, 10, 6, 6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.only(top: 2),
-                    child: Icon(
-                      Icons.data_usage_rounded,
-                      color: StatusColors.busy,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      l.lowQuotaNotice(rounded(usage.limitBytes)),
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: p.text,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: l.close,
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(Icons.close_rounded, size: 18, color: p.muted),
-                    onPressed: () {
-                      widget.settings.update(
-                        lowQuotaDismissedAt: DateTime.now(),
-                      );
-                      setState(() {});
-                    },
-                  ),
-                ],
-              ),
-              Align(
-                alignment: AlignmentDirectional.centerEnd,
-                child: TextButton.icon(
-                  onPressed: () =>
-                      startAddAccount(context, widget.core, widget.settings),
-                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
-                  label: Text(l.addAccount),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

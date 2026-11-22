@@ -9,7 +9,6 @@ import '../l10n/app_localizations.dart';
 import 'about_page.dart';
 import 'format.dart';
 import 'announcement_panel.dart';
-import 'accounts_page.dart';
 import 'logs_page.dart';
 import 'overview_page.dart';
 import 'servers_page.dart';
@@ -92,10 +91,6 @@ class _MobileShellState extends State<MobileShell> {
     final settings = widget.settings;
     void openServers() =>
         _push(l.navServers, () => ServersPage(core: core, settings: settings));
-    void openAccounts() => _push(
-      l.navAccounts,
-      () => AccountsPage(core: core, settings: settings),
-    );
     void openConnection() => _push(
       l.sectionConnection,
       () => SettingsPage(
@@ -119,7 +114,6 @@ class _MobileShellState extends State<MobileShell> {
                 core: core,
                 settings: settings,
                 onOpenServers: openServers,
-                onOpenAccounts: openAccounts,
                 onOpenConnection: openConnection,
                 onOpenUpstreamProxy: openUpstreamProxy,
                 phone: true,
@@ -127,7 +121,6 @@ class _MobileShellState extends State<MobileShell> {
             : _readable(
                 _SettingsList(
                   onOpenServers: openServers,
-                  onOpenAccounts: openAccounts,
                   push: _push,
                   core: core,
                   settings: settings,
@@ -197,14 +190,12 @@ class _MobileShellState extends State<MobileShell> {
 class _SettingsList extends StatefulWidget {
   const _SettingsList({
     required this.onOpenServers,
-    required this.onOpenAccounts,
     required this.push,
     required this.core,
     required this.settings,
   });
 
   final VoidCallback onOpenServers;
-  final VoidCallback onOpenAccounts;
   final void Function(String title, Widget Function() page) push;
   final CoreController core;
   final AppSettings settings;
@@ -231,7 +222,6 @@ class _SettingsListState extends State<_SettingsList> {
     final settings = widget.settings;
     final push = widget.push;
     final onOpenServers = widget.onOpenServers;
-    final onOpenAccounts = widget.onOpenAccounts;
     bool matches(String name) =>
         _query.isEmpty || foldForSearch(name).contains(_query);
     // A group keeps only the rows whose name matches, and goes away itself
@@ -296,7 +286,6 @@ class _SettingsListState extends State<_SettingsList> {
           l.sectionGeneral,
         ),
         row(Icons.public_rounded, l.navServers, onOpenServers),
-        row(Icons.people_outline_rounded, l.navAccounts, onOpenAccounts),
       ]),
       ?group(l.groupNetwork, [
           section(

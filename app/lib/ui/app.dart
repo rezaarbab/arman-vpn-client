@@ -10,7 +10,6 @@ import '../core/models.dart';
 import '../l10n/app_localizations.dart';
 import 'about_page.dart';
 import 'announcement_panel.dart';
-import 'accounts_page.dart';
 import 'focus_ring.dart';
 import 'format.dart';
 import 'logs_page.dart';
@@ -135,7 +134,7 @@ class Shell extends StatefulWidget {
   State<Shell> createState() => _ShellState();
 }
 
-enum _Page { overview, servers, accounts, settings, logs, about }
+enum _Page { overview, servers, settings, logs, about }
 
 class _ShellState extends State<Shell> {
   _Page _page = _Page.overview;
@@ -171,127 +170,17 @@ class _ShellState extends State<Shell> {
       final l = AppLocalizations.of(context);
       final core = widget.core;
       final status = core.status;
-      final needsAttention = (core.accounts?.accounts ?? const [])
-          .where((a) => a.enabled && a.needsSignIn)
-          .length;
       if (widget.settings.firstRun && status != null) {
         return WelcomePage(core: core, settings: widget.settings);
       }
       final pages = [
         _Page.overview,
         _Page.servers,
-        _Page.accounts,
         _Page.settings,
         _Page.logs,
         _Page.about,
       ];
       final page = pages.contains(_page) ? _page : _Page.overview;
-      Widget accountsIcon(IconData icon) => Badge(
-        isLabelVisible: needsAttention > 0,
-        label: Text('$needsAttention'),
-        child: Icon(icon),
-      );
-      // Each page's icons and name, for the side menu and the bottom bar.
-      final items = [
-        for (final page in pages)
-          switch (page) {
-            _Page.overview => (
-              const Icon(Icons.dashboard_outlined),
-              const Icon(Icons.dashboard_rounded),
-              l.navOverview,
-            ),
-            _Page.servers => (
-              const Icon(Icons.public_outlined),
-              const Icon(Icons.public_rounded),
-              l.navServers,
-            ),
-            _Page.accounts => (
-              accountsIcon(Icons.people_outline_rounded),
-              accountsIcon(Icons.people_rounded),
-              l.navAccounts,
-            ),
-            _Page.settings => (
-              const Icon(Icons.settings_outlined),
-              const Icon(Icons.settings_rounded),
-              l.navSettings,
-            ),
-            _Page.logs => (
-              const Icon(Icons.receipt_long_outlined),
-              const Icon(Icons.receipt_long_rounded),
-              l.navLogs,
-            ),
-            _Page.about => (
-              const Icon(Icons.info_outline_rounded),
-              const Icon(Icons.info_rounded),
-              l.navAbout,
-            ),
-          },
-      ];
-      final content = Column(
-        children: [
-          if (core.unavailable != null && status != null) const _LostBanner(),
-          Expanded(
-            child: status == null
-                ? _NoCore(core: core)
-                : switch (page) {
-                    // Its cards open the pages beside it.
-                    _Page.overview => OverviewPage(
-                      core: core,
-                      settings: widget.settings,
-                      onOpenServers: () =>
-                          setState(() => _page = _Page.servers),
-                      onOpenAccounts: () =>
-                          setState(() => _page = _Page.accounts),
-                      onOpenConnection: () => setState(() {
-                        _page = _Page.settings;
-                        _settingsOpening = SettingsSection.connection;
-                      }),
-                      onOpenUpstreamProxy: () => setState(() {
-                        _page = _Page.settings;
-                        _settingsOpening = SettingsSection.upstreamProxy;
-                      }),
-                    ),
-                    _Page.servers => ServersPage(
-                      core: core,
-                      settings: widget.settings,
-                    ),
-                    _Page.accounts => AccountsPage(
-                      core: core,
-                      settings: widget.settings,
-                    ),
-                    _Page.settings => SettingsPage(
-                      key: ValueKey(_settingsOpening),
-                      core: core,
-                      settings: widget.settings,
-                      opening: _settingsOpening,
-                      onOpenLogs: () => setState(() => _page = _Page.logs),
-                    ),
-                    _Page.logs => LogsPage(
-                      core: core,
-                      settings: widget.settings,
-                    ),
-                    _Page.about => AboutPage(core: core),
-                  },
-          ),
-        ],
-      );
-      void select(int i) => setState(() {
-        _page = pages[i];
-        _settingsOpening = null;
-      });
-      // Android (a phone, or a tablet in either orientation) and a narrow
-      // window: the phone layout, Home and Settings. The computer layout
-      // offers computer-only choices, such as Windows' system proxy.
-      if (Platform.isAndroid || MediaQuery.sizeOf(context).width < 640) {
-        return MobileShell(
-          core: core,
-          settings: widget.settings,
-          banner: core.unavailable != null && status != null
-              ? const _LostBanner()
-              : null,
-          noCore: status == null ? _NoCore(core: core) : null,
-        );
-      }
       return Scaffold(
         body: AnnouncementOverlay(
           settings: widget.settings,
