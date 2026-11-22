@@ -181,6 +181,83 @@ class _ShellState extends State<Shell> {
         _Page.about,
       ];
       final page = pages.contains(_page) ? _page : _Page.overview;
+      // Each page's icons and name, for the side menu and the bottom bar.
+      final items = [
+        for (final page in pages)
+          switch (page) {
+            _Page.overview => (
+              const Icon(Icons.dashboard_outlined),
+              const Icon(Icons.dashboard_rounded),
+              l.navOverview,
+            ),
+            _Page.servers => (
+              const Icon(Icons.public_outlined),
+              const Icon(Icons.public_rounded),
+              l.navServers,
+            ),
+            _Page.settings => (
+              const Icon(Icons.settings_outlined),
+              const Icon(Icons.settings_rounded),
+              l.navSettings,
+            ),
+            _Page.logs => (
+              const Icon(Icons.receipt_long_outlined),
+              const Icon(Icons.receipt_long_rounded),
+              l.navLogs,
+            ),
+            _Page.about => (
+              const Icon(Icons.info_outline_rounded),
+              const Icon(Icons.info_rounded),
+              l.navAbout,
+            ),
+          },
+      ];
+      final content = Column(
+        children: [
+          if (core.unavailable != null && status != null) const _LostBanner(),
+          Expanded(
+            child: status == null
+                ? _NoCore(core: core)
+                : switch (page) {
+                    // Its cards open the pages beside it.
+                    _Page.overview => OverviewPage(
+                      core: core,
+                      settings: widget.settings,
+                      onOpenServers: () =>
+                          setState(() => _page = _Page.servers),
+                      onOpenConnection: () => setState(() {
+                        _page = _Page.settings;
+                        _settingsOpening = SettingsSection.connection;
+                      }),
+                      onOpenUpstreamProxy: () => setState(() {
+                        _page = _Page.settings;
+                        _settingsOpening = SettingsSection.upstreamProxy;
+                      }),
+                    ),
+                    _Page.servers => ServersPage(
+                      core: core,
+                      settings: widget.settings,
+                    ),
+                    _Page.settings => SettingsPage(
+                      key: ValueKey(_settingsOpening),
+                      core: core,
+                      settings: widget.settings,
+                      opening: _settingsOpening,
+                      onOpenLogs: () => setState(() => _page = _Page.logs),
+                    ),
+                    _Page.logs => LogsPage(
+                      core: core,
+                      settings: widget.settings,
+                    ),
+                    _Page.about => AboutPage(core: core),
+                  },
+          ),
+        ],
+      );
+      void select(int i) => setState(() {
+        _page = pages[i];
+        _settingsOpening = null;
+      });
       return Scaffold(
         body: AnnouncementOverlay(
           settings: widget.settings,
