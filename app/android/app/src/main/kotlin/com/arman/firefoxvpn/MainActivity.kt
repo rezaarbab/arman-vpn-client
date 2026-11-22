@@ -295,6 +295,8 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "irFlagOf" -> result.success(Flags.of(this, CoreService.picked(this)))
+                "irFlagsAll" -> result.success(Flags.all(this))
+                "irStatsAll" -> result.success(CoreService.statsAll(this))
                 "irStatReset" -> {
                     val id = call.argument<String>("id") ?: ""
                     if (id.isNotBlank()) {

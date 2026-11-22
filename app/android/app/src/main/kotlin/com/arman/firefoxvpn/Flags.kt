@@ -23,6 +23,16 @@ object Flags {
         return v
     }
 
+    /** Everything already learned in an earlier run, id -> country. */
+    fun all(context: Context): Map<String, String> {
+        val p = context.getSharedPreferences("blob_core", Context.MODE_PRIVATE)
+        val out = HashMap<String, String>()
+        for ((k, v) in p.all) {
+            if (k.startsWith("cc_") && v is String && v.length == 2) out[k.removePrefix("cc_")] = v
+        }
+        return out
+    }
+
     fun probe(context: Context, id: String): String {
         if (CoreService.on || id.isBlank()) return ""
         of(context, id).takeIf { it.isNotEmpty() }?.let { return it }

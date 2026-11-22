@@ -91,6 +91,7 @@ Future<void> runAndroid() async {
   final core = CoreController(
     () async => BlobApi(),
     turnOn: BlobApi.setOn,
+    pollInterval: const Duration(milliseconds: 900),
   )..start();
   AppLifecycleListener(
     onResume: core.retryNow,

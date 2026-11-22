@@ -383,6 +383,15 @@ class CoreService : VpnService() {
             "down" to traffic.down,
         )
 
+        /** Every kept session, id -> "ms|up|down". */
+        fun statsAll(context: Context): Map<String, String> {
+            val out = HashMap<String, String>()
+            for ((k, v) in prefs(context).all) {
+                if (k.startsWith("stats_") && v is String) out[k.removePrefix("stats_")] = v
+            }
+            return out
+        }
+
         /** The last session of each named row: "ms|up|down", or absent. */
         fun statsFor(context: Context, ids: List<String>): Map<String, String> {
             val p = prefs(context)

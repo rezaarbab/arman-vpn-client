@@ -59,6 +59,7 @@ class _ServersPageState extends State<ServersPage> {
         setState(() => _picked = id);
         IrRowsBridge.pick(id).catchError((Object _) {});
       });
+      _loadCached();
       _loadStats();
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _pollLive());
       // country flags: one row at a time, only while the tunnel is down
@@ -76,6 +77,20 @@ class _ServersPageState extends State<ServersPage> {
     if (!_alive) return;
     if (cc.length == 2) setState(() => _cc[id] = cc.toLowerCase());
     _probeAt++;
+  }
+
+  /// What an earlier visit already learned: flags and sessions show at once,
+  /// before a single probe runs.
+  Future<void> _loadCached() async {
+    try {
+      final f = await IrRowsBridge.flagsAll();
+      final st = await IrRowsBridge.statsAll();
+      if (!_alive) return;
+      setState(() {
+        for (final e in f.entries) { _cc[e.key] = e.value.toLowerCase(); }
+        if (st.isNotEmpty) _stats = {..._stats, ...st};
+      });
+    } catch (_) {}
   }
 
   /// Each row's last session, so the line is there before anything connects.
@@ -207,11 +222,13 @@ class _ServersPageState extends State<ServersPage> {
                       dense: true,
                       leading: _cc[row.id] == null
                           ? null
-                          : SvgPicture.asset(
+                          : ClipRRect(
+                              borderRadius: BorderRadius.circular(7),
+                              child: SvgPicture.asset(
                               'assets/flags/${_cc[row.id]}.svg',
-                              width: 24,
-                              height: 18,
-                            ),
+                              width: 40,
+                              height: 28,
+                            )),
                       title: Text(row.name),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

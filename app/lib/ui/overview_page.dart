@@ -2947,8 +2947,8 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
       child: Row(
         children: [
           SizedBox(
-            width: 34,
-            height: 24,
+            width: 44,
+            height: 30,
             child: _cc.isEmpty
                 ? const SizedBox.shrink()
                 : ClipRRect(

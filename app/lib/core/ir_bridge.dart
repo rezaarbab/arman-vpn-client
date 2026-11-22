@@ -45,6 +45,16 @@ class IrRowsBridge {
   static Future<void> statReset(String id) async =>
       await _ch.invokeMethod<void>('irStatReset', {'id': id});
 
+  static Future<Map<String, String>> flagsAll() async {
+    final m = await _ch.invokeMethod<Map>('irFlagsAll');
+    return {for (final e in (m ?? {}).entries) '${e.key}': '${e.value}'};
+  }
+
+  static Future<Map<String, String>> statsAll() async {
+    final m = await _ch.invokeMethod<Map>('irStatsAll');
+    return {for (final e in (m ?? {}).entries) '${e.key}': '${e.value}'};
+  }
+
   static Future<String> flagOf() async =>
       await _ch.invokeMethod<String>('irFlagOf') ?? '';
 
