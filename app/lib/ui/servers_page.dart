@@ -34,9 +34,14 @@ class _ServersPageState extends State<ServersPage> {
       IrRowsBridge.picked().then((id) {
         if (_alive && id.isNotEmpty) setState(() => _picked = id);
       }, onError: (Object _) {});
-      _servers.refresh().then((_) {
-        // a list nobody has chosen from yet dials its first row
+      // Opening the page reads the library; it does not ask the worker.
+      // The exchange happens when the list is pulled or Sync now is pressed,
+      // or when the library is still empty (nothing to read).
+      _servers.load().then((_) async {
+        if (!_alive) return;
+        if (_servers.rows.isEmpty) await _servers.refresh();
         if (!_alive || _picked != null || _servers.rows.isEmpty) return;
+        // a list nobody has chosen from yet dials its first row
         final id = _servers.rows.first.id;
         setState(() => _picked = id);
         IrRowsBridge.pick(id).catchError((Object _) {});

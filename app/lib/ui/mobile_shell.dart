@@ -300,19 +300,6 @@ class _SettingsListState extends State<_SettingsList> {
           ),
           section(SettingsSection.dns, Icons.dns_rounded, l.sectionDns),
         ]),
-      ?group(l.sectionBypass, [
-          section(SettingsSection.relay, Icons.cloud_outlined, l.apiRelay),
-          section(
-            SettingsSection.fragment,
-            Icons.content_cut_rounded,
-            l.tlsFragment,
-          ),
-          section(
-            SettingsSection.upstreamProxy,
-            Icons.lan_outlined,
-            l.upstreamProxy,
-          ),
-        ]),
       ?group(l.groupApp, [
           // The app's port and the web dashboard: computers only (a narrow
           // window shows this layout too).

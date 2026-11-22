@@ -105,14 +105,6 @@ List<(String, List<SettingsEntry>)> settingsGroups(
       if (tun) (SettingsSection.tun, Icons.vpn_lock_rounded, l.sectionTun),
     ],
   ),
-  (
-    l.sectionBypass,
-    [
-      (SettingsSection.relay, Icons.cloud_outlined, l.apiRelay),
-      (SettingsSection.fragment, Icons.content_cut_rounded, l.tlsFragment),
-      (SettingsSection.upstreamProxy, Icons.lan_outlined, l.upstreamProxy),
-    ],
-  ),
   // The app's port and the web dashboard: computers only.
   if (!Platform.isAndroid)
     (
@@ -179,11 +171,6 @@ List<(SettingsSection, String)> settingsIndex(AppLocalizations l) => [
   (SettingsSection.connection, l.sectionConnection),
   (SettingsSection.connection, l.transport),
   (SettingsSection.connection, l.tunMtu),
-  (SettingsSection.relay, l.apiRelay),
-  (SettingsSection.relay, l.apiRelayUse),
-  (SettingsSection.relay, l.personalRelay),
-  (SettingsSection.relay, l.sharedRelay),
-  (SettingsSection.fragment, l.tlsFragment),
   (SettingsSection.routing, l.blockAds),
   (SettingsSection.routing, l.blockRules),
   (SettingsSection.routing, l.bypassApps),
@@ -209,7 +196,6 @@ List<(SettingsSection, String)> settingsIndex(AppLocalizations l) => [
   (SettingsSection.advanced, l.listSource),
   (SettingsSection.advanced, l.removeTunService),
   (SettingsSection.advanced, l.updateLists),
-  (SettingsSection.advanced, l.upstreamProxy),
   (SettingsSection.advanced, l.webDashboard),
 ];
 

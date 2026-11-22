@@ -426,6 +426,19 @@ class _DesktopHome extends StatelessWidget {
             color: on ? accent : p.text,
           ),
         ),
+        // How long this session has been up: the poll redraws it.
+        if (connected && proxy?.startedAt != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              formatDuration(
+                l,
+                DateTime.now().difference(proxy!.startedAt!),
+              ),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.labelMedium?.copyWith(color: p.muted),
+            ),
+          ),
         const SizedBox(height: 8),
         if (connected)
           Wrap(
@@ -1246,6 +1259,19 @@ class _PhoneHome extends StatelessWidget {
                   color: on ? accent : p.text,
                 ),
               ),
+              // How long this session has been up: the poll redraws it.
+              if (connected && status.proxy?.startedAt != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    formatDuration(
+                      l,
+                      DateTime.now().difference(status.proxy!.startedAt!),
+                    ),
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.labelMedium?.copyWith(color: p.muted),
+                  ),
+                ),
               const SizedBox(height: 8),
               if (connected)
                 Wrap(

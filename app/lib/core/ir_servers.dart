@@ -41,6 +41,23 @@ class IrServers extends ChangeNotifier {
   /// page should say which.
   String gateNote = '';
 
+  /// Reads what the library already holds; no exchange. Opening the page
+  /// costs no request: the list is asked for by hand (pull, or Sync now).
+  Future<void> load() async {
+    loading = true;
+    _notify();
+    try {
+      final raw = await IrRowsBridge.all();
+      rows = raw.map(IrServer.fromMap).where((r) => r.id.isNotEmpty).toList(growable: false);
+      error = null;
+    } catch (e) {
+      error = '$e';
+    } finally {
+      loading = false;
+      _notify();
+    }
+  }
+
   Future<void> refresh() async {
     loading = true;
     _notify();

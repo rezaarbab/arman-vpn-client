@@ -402,9 +402,9 @@ class CoreService : VpnService() {
         }
 
         /**
-         * A reachability check on the picked server, timed in this process
-         * (the ping the list shows). It is not a test through the tunnel; the
-         * tunnel itself is reported by the core's own callbacks.
+         * The tunnel's own answer for the home page: up or not. The ping is a latency
+         * sample beside it, never the verdict - a host that drops ICMP/TCP probes
+         * would otherwise paint a working tunnel yellow forever.
          */
         fun testPing(context: Context): Map<String, Any?> {
             val id = pickedId(context)
@@ -412,7 +412,7 @@ class CoreService : VpnService() {
             val ms = if (row < 0) -1 else NativeSec.tcpPing(row, 5000)
             val m = mapOf(
                 "at" to isoTime(System.currentTimeMillis()),
-                "ok" to (ms >= 0),
+                "ok" to connected,
                 "target" to "tcp",
                 "response_ms" to ms,
                 "total_ms" to ms,
@@ -449,6 +449,7 @@ class CoreService : VpnService() {
         fun turnOff(context: Context) {
             on = false
             connected = false
+            log("disconnected")
             context.stopService(Intent(context, CoreService::class.java))
             QuickTile.refresh(context)
             ConnectWidget.updateAll(context)
