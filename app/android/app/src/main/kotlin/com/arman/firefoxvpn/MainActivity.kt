@@ -135,7 +135,9 @@ class MainActivity : FlutterActivity() {
                 }
                 "blobStatus" -> result.success(CoreService.statusMap(this))
                 "blobPower" -> {
-                    if (call.argument<Boolean>("on") != true) {
+                    val want = call.argument<Boolean>("on") == true
+                    CoreService.log(if (want) "power on requested" else "power off requested")
+                    if (!want) {
                         CoreService.turnOff(this)
                         result.success(null)
                     } else {

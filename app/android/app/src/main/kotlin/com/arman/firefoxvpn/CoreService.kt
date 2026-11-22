@@ -278,6 +278,7 @@ class CoreService : VpnService() {
     }
 
     override fun onDestroy() {
+        log("service stopped")
         keepStats()
         closeTun()
         connected = false
@@ -507,6 +508,7 @@ class CoreService : VpnService() {
 
         fun turnOff(context: Context) {
             wantOn = false
+            log("stopping the service")
             on = false
             connected = false
             log("disconnected")
