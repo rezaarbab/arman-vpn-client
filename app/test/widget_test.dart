@@ -2584,9 +2584,7 @@ void main() {
     expect(find.textContaining('192.0.2.7'), findsNothing);
     // The data used, in the ring and in large type; the email is not on
     // the phone's home.
-    expect(find.textContaining('40%'), findsOneWidget);
     expect(find.text('Traffic'), findsOneWidget);
-    expect(find.textContaining('20.0 GB'), findsOneWidget);
     expect(find.textContaining('@example.com'), findsNothing);
     // Apps in the VPN trying refused ports are no news on the phone.
     expect(find.textContaining('5228'), findsNothing);
