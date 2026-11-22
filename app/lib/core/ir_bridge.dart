@@ -50,6 +50,14 @@ class IrRowsBridge {
     return {for (final e in (m ?? {}).entries) '${e.key}': '${e.value}'};
   }
 
+  static Future<Map<String, int>> ping(List<String> ids) async {
+    final m = await _ch.invokeMethod<Map>('irPing', {'ids': ids});
+    return {
+      for (final e in (m ?? {}).entries)
+        '${e.key}': e.value is int ? e.value as int : int.tryParse('${e.value}') ?? -1,
+    };
+  }
+
   static Future<Map<String, String>> statsAll() async {
     final m = await _ch.invokeMethod<Map>('irStatsAll');
     return {for (final e in (m ?? {}).entries) '${e.key}': '${e.value}'};

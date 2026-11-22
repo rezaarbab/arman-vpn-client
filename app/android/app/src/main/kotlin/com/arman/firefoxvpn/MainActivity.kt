@@ -299,6 +299,15 @@ class MainActivity : FlutterActivity() {
                     Flags.of(this, id).ifEmpty { Flags.probe(this, id) }
                 }
                 "irFlagsAll" -> result.success(Flags.all(this))
+                "irPing" -> inBackground(result) {
+                    val ids = call.argument<List<String>>("ids") ?: emptyList()
+                    val out = HashMap<String, Int>()
+                    for (id in ids.take(30)) {
+                        val row = IrRows.rowOf(id)
+                        out[id] = if (row < 0) -1 else ir.v2rayng.compose.core.NativeSec.tcpPing(row, 2500)
+                    }
+                    out
+                }
                 "irStatsAll" -> result.success(CoreService.statsAll(this))
                 "irStatReset" -> {
                     val id = call.argument<String>("id") ?: ""
