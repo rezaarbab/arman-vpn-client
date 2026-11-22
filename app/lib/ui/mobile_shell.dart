@@ -256,7 +256,6 @@ class _SettingsListState extends State<_SettingsList> {
     // port and web dashboard are a computer's.
     final offered = {
       SettingsSection.general,
-      SettingsSection.connection,
       SettingsSection.routing,
       SettingsSection.relay,
       SettingsSection.fragment,
@@ -285,19 +284,12 @@ class _SettingsListState extends State<_SettingsList> {
           l.sectionGeneral,
         ),
         row(Icons.public_rounded, l.navServers, onOpenServers),
+        section(
+          SettingsSection.routing,
+          Icons.alt_route_rounded,
+          l.sectionRouting,
+        ),
       ]),
-      ?group(l.groupNetwork, [
-          section(
-            SettingsSection.connection,
-            Icons.vpn_lock_outlined,
-            l.sectionConnection,
-          ),
-          section(
-            SettingsSection.routing,
-            Icons.alt_route_rounded,
-            l.sectionRouting,
-          ),
-        ]),
       ?group(l.groupApp, [
           // The app's port and the web dashboard: computers only (a narrow
           // window shows this layout too).

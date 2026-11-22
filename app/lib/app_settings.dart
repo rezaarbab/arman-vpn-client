@@ -198,7 +198,7 @@ class AppSettings extends ChangeNotifier {
             CloseAction.values.asNameMap()[j['close']] ?? CloseAction.ask;
         s.firstRun = j['welcome_done'] != true;
         s.showPublicIp = j['show_public_ip'] == true;
-        s.showAppModeSwitch = j['show_app_mode_switch'] == true;
+        s.showAppModeSwitch = false; // the quick mode switch is gone
         s.signInMethod =
             SignInMethod.values.asNameMap()[j['signin_method']] ??
             s.signInMethod;

@@ -99,7 +99,6 @@ List<(String, List<SettingsEntry>)> settingsGroups(
     l.sectionGeneral,
     [
       (SettingsSection.general, Icons.tune_rounded, l.sectionGeneral),
-      (SettingsSection.connection, Icons.computer_rounded, l.sectionConnection),
       (SettingsSection.routing, Icons.alt_route_rounded, l.sectionRouting),
       if (tun) (SettingsSection.tun, Icons.vpn_lock_rounded, l.sectionTun),
     ],
@@ -125,7 +124,6 @@ bool settingOnThisPlatform(AppLocalizations l, String name) {
     l.connectOnStartup,
   };
   final androidOnly = {
-    l.showAppModeSwitch,
     l.speedInNotification,
     l.connectionMode,
     l.bypassApps,
@@ -156,7 +154,6 @@ List<(SettingsSection, String)> settingsIndex(AppLocalizations l) => [
   (SettingsSection.general, l.connectOnStartup),
   (SettingsSection.general, l.language),
   (SettingsSection.general, l.sectionGeneral),
-  (SettingsSection.general, l.showAppModeSwitch),
   (SettingsSection.general, l.showPublicIp),
   (SettingsSection.general, l.speedInNotification),
   (SettingsSection.general, l.startOnBoot),
@@ -164,12 +161,6 @@ List<(SettingsSection, String)> settingsIndex(AppLocalizations l) => [
   (SettingsSection.connection, l.connectionMode),
   (SettingsSection.connection, l.ipVersion),
   (SettingsSection.connection, l.listenAddress),
-  (SettingsSection.connection, l.localProxy),
-  (SettingsSection.connection, l.proxyLogin),
-  (SettingsSection.connection, l.proxyPort),
-  (SettingsSection.connection, l.sectionConnection),
-  (SettingsSection.connection, l.transport),
-  (SettingsSection.connection, l.tunMtu),
   (SettingsSection.routing, l.blockAds),
   (SettingsSection.routing, l.blockRules),
   (SettingsSection.routing, l.bypassApps),
