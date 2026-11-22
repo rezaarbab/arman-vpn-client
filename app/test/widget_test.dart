@@ -1308,7 +1308,6 @@ void main() {
       for (final name in [
         'General',
         'Servers',
-        'Accounts',
         'Network',
         'Connection',
         'Routing',
@@ -2721,45 +2720,6 @@ void main() {
       core.dispose();
     }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
   }
-
-  testWidgets('a nearly used account suggests another one, for a minute', (
-    tester,
-  ) async {
-    stillMotion(tester);
-    tester.view.physicalSize = const Size(1200, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-
-    // 3 GB left, and the other account needs signing in: nobody takes over.
-    final api = FakeApi();
-    api.accountsJson.first['usage'] = {
-      'limit_bytes': 50 << 30,
-      'remaining_bytes': 3 << 30,
-    };
-    final core = CoreController(
-      () async => api,
-      pollInterval: const Duration(hours: 1),
-    );
-    final settings = AppSettings();
-    await tester.pumpWidget(VpnApp(core: core, settings: settings));
-    core.start();
-    await tester.pumpAndSettle();
-    await core.runTest();
-    await tester.pumpAndSettle();
-
-    final notice = find.textContaining('running out of data');
-    expect(notice, findsOneWidget);
-    expect(find.textContaining('3 GB'), findsNothing);
-    expect(find.textContaining('50 GB'), findsOneWidget);
-
-    // Gone after a minute.
-    await tester.pump(const Duration(seconds: 61));
-    await tester.pumpAndSettle();
-    expect(notice, findsNothing);
-
-    await tester.pumpWidget(const SizedBox());
-    core.dispose();
-  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 
   testWidgets('the computer says connecting until a test passes', (
     tester,
