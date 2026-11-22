@@ -290,6 +290,9 @@ class MainActivity : FlutterActivity() {
                 "irSyncWhy" -> result.success(Sync.lastReason)
                 "irGate" -> result.success(IrRows.gate())
                 "irLive" -> result.success(CoreService.liveMap())
+                "irFlag" -> inBackground(result) {
+                    Flags.probe(this, call.argument<String>("id") ?: "")
+                }
                 "irStats" -> inBackground(result) {
                     CoreService.statsFor(this, call.argument<List<String>>("ids") ?: emptyList())
                 }

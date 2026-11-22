@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../app_settings.dart';
@@ -30,6 +31,9 @@ class _ServersPageState extends State<ServersPage> {
   Map<String, String> _live = const {};
   Map<String, String> _stats = const {};
   Timer? _ticker;
+  Timer? _flags;
+  final _cc = <String, String>{};
+  int _probeAt = 0;
 
   @override
   void initState() {
@@ -56,7 +60,21 @@ class _ServersPageState extends State<ServersPage> {
       });
       _loadStats();
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _pollLive());
+      // country flags: one row at a time, only while the tunnel is down
+      _flags = Timer.periodic(const Duration(milliseconds: 1200), (_) => _probeNext());
     });
+  }
+
+  Future<void> _probeNext() async {
+    if (!_alive || _live['on'] == 'true') return;
+    final rows = _servers.rows;
+    while (_probeAt < rows.length && _cc.containsKey(rows[_probeAt].id)) _probeAt++;
+    if (_probeAt >= rows.length || _probeAt >= 150) return;
+    final id = rows[_probeAt].id;
+    final cc = await IrRowsBridge.flag(id);
+    if (!_alive) return;
+    if (cc.length == 2) setState(() => _cc[id] = cc.toLowerCase());
+    _probeAt++;
   }
 
   /// Each row's last session, so the line is there before anything connects.
@@ -126,6 +144,7 @@ class _ServersPageState extends State<ServersPage> {
   void dispose() {
     _alive = false;
     _ticker?.cancel();
+    _flags?.cancel();
     _servers.dispose();
     super.dispose();
   }
@@ -185,6 +204,13 @@ class _ServersPageState extends State<ServersPage> {
                   for (final row in entry.value)
                     ListTile(
                       dense: true,
+                      leading: _cc[row.id] == null
+                          ? null
+                          : SvgPicture.asset(
+                              'assets/flags/${_cc[row.id]}.svg',
+                              width: 24,
+                              height: 18,
+                            ),
                       title: Text(row.name),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

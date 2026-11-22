@@ -102,6 +102,7 @@ class CoreService : VpnService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        instance = this
         if (intent?.action == ACTION_DISCONNECT) {
             turnOff(this)
             return START_NOT_STICKY
@@ -171,6 +172,21 @@ class CoreService : VpnService() {
     private fun dropTunnel(reason: String) {
         lastFailure = reason
         log(reason)
+        teardown()
+        on = false
+        wantOn = false
+        stopForegroundCompat()
+        stopSelf()
+        ConnectWidget.updateAll(this)
+        QuickTile.refresh(this)
+    }
+
+    /**
+     * Everything the tunnel owns, closed now. A stop asked for by the UI may never reach
+     * onDestroy (the log showed "stopping the service" with no "service stopped"), and an
+     * fd left open is a VPN icon with nothing behind it, so the close does not wait.
+     */
+    fun teardown() {
         keepStats()
         connected = false
         connectedSince = 0L
@@ -183,12 +199,7 @@ class CoreService : VpnService() {
         controller = null
         closeTun()
         traffic = Traffic(0, 0, 0, 0)
-        on = false
-        wantOn = false
         stopForegroundCompat()
-        stopSelf()
-        ConnectWidget.updateAll(this)
-        QuickTile.refresh(this)
     }
 
     /** The device the tunnel borrows: detachFd handed the raw fd to the core, and
@@ -279,6 +290,8 @@ class CoreService : VpnService() {
 
     override fun onDestroy() {
         log("service stopped")
+        teardown()
+        instance = null
         keepStats()
         closeTun()
         connected = false
@@ -330,6 +343,10 @@ class CoreService : VpnService() {
         @Volatile
         var traffic = Traffic(0, 0, 0, 0)
             internal set
+
+        /** The running service, so a stop from the UI closes the tunnel itself. */
+        @Volatile
+        private var instance: CoreService? = null
 
         /** An explicit stop wins: a start intent that arrives after it stays out. */
         @Volatile
@@ -509,6 +526,9 @@ class CoreService : VpnService() {
         fun turnOff(context: Context) {
             wantOn = false
             log("stopping the service")
+            // close the tunnel here: onDestroy has been seen not to arrive
+            instance?.teardown()
+            instance = null
             on = false
             connected = false
             log("disconnected")

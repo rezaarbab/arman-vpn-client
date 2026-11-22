@@ -38,6 +38,10 @@ class IrRowsBridge {
     return {for (final e in (m ?? {}).entries) '${e.key}': '${e.value}'};
   }
 
+  /// The two-letter country a probe measured for this row; "" until known.
+  static Future<String> flag(String id) async =>
+      await _ch.invokeMethod<String>('irFlag', {'id': id}) ?? '';
+
   /// Each named row's last session: "ms|up|down".
   static Future<Map<String, String>> stats(List<String> ids) async {
     final m = await _ch.invokeMethod<Map>('irStats', {'ids': ids});
