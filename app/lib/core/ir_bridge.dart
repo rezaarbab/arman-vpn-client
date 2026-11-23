@@ -70,13 +70,13 @@ class IrRowsBridge {
     final m = await _ch.invokeMethod<Map>('irPingsAll');
     return {
       for (final e in (m ?? {}).entries)
-        '\${e.key}': e.value is int ? e.value as int : int.tryParse('\${e.value}') ?? -1,
+        '${e.key}': e.value is int ? e.value as int : int.tryParse('${e.value}') ?? -1,
     };
   }
 
   static Future<Map<String, String>> pickInfo() async {
     final m = await _ch.invokeMethod<Map>('irPickInfo');
-    return {for (final e in (m ?? {}).entries) '\${e.key}': '\${e.value}'};
+    return {for (final e in (m ?? {}).entries) '${e.key}': '${e.value}'};
   }
 
   static Future<int> pickPing() async =>

@@ -21,8 +21,6 @@ class ServersPage extends StatefulWidget {
   State<ServersPage> createState() => _ServersPageState();
 }
 
-bool _autoSyncedOnce = false;
-
 class _ServersPageState extends State<ServersPage> {
   final _servers = IrServers();
   final _search = TextEditingController();
@@ -39,9 +37,12 @@ class _ServersPageState extends State<ServersPage> {
   Map<String, String> _live = const {};
   Map<String, String> _stats = const {};
   Timer? _ticker;
-  Timer? _flags;
+  bool _flagging = false;
   final _cc = <String, String>{};
-  int _probeAt = 0;
+
+  /// Rows this run already asked about. A country is measured once per run:
+  /// a row that did not answer is not asked again every time the page opens.
+  static final _asked = <String>{};
 
   @override
   void initState() {
@@ -57,38 +58,80 @@ class _ServersPageState extends State<ServersPage> {
       // Opening the page reads the library; it does not ask the worker.
       // The exchange happens when the list is pulled or Sync now is pressed,
       // or when the library is still empty (nothing to read).
+      final cached = _loadCached();
       _servers.load().then((_) async {
         if (!_alive) return;
-        if (_alive) _loadStats();
-        if (!_alive || _picked != null || _servers.rows.isEmpty) return;
-        // a list nobody has chosen from yet dials its first row
-        final id = _servers.rows.first.id;
-        setState(() => _picked = id);
-        IrRowsBridge.pick(id).catchError((Object _) {});
+        _loadStats();
+        if (_picked == null && _servers.rows.isNotEmpty) {
+          // a list nobody has chosen from yet dials its first row
+          final id = _servers.rows.first.id;
+          setState(() => _picked = id);
+          IrRowsBridge.pick(id).catchError((Object _) {});
+        }
+        await cached;
+        _flagPass();
       });
-      _loadCached();
-      _loadStats();
       _loadPings();
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _pollLive());
-      // country flags: one row at a time, only while the tunnel is down
-      _flags = Timer.periodic(const Duration(milliseconds: 400), (_) => _probeNext());
     });
   }
 
-  /// A real connect timed in C, a batch at a time so the list fills as it goes.
+  /// The countries the store does not have, three rows at a time. A country is
+  /// one short-lived core, so the old one-row-per-tick pass made the last row
+  /// wait behind every other row on the list.
+  Future<void> _flagPass() async {
+    if (_flagging) return;
+    _flagging = true;
+    try {
+      var at = 0;
+      final ids = [for (final r in _servers.rows.take(200)) r.id];
+      while (at < ids.length) {
+        if (!_alive || _live['on'] == 'true') return;
+        final chunk = <String>[];
+        while (chunk.length < 3 && at < ids.length) {
+          final id = ids[at++];
+          if (!_cc.containsKey(id) && !_asked.contains(id)) chunk.add(id);
+        }
+        if (chunk.isEmpty) continue;
+        _asked.addAll(chunk);
+        final got = await Future.wait([for (final id in chunk) IrRowsBridge.flag(id)]);
+        if (!_alive) return;
+        final add = <String, String>{};
+        for (var i = 0; i < chunk.length; i++) {
+          final cc = got[i];
+          if (cc.length == 2) add[chunk[i]] = cc.toLowerCase();
+        }
+        if (add.isNotEmpty) setState(() => _cc.addAll(add));
+      }
+    } catch (_) {
+      // a page without a flag is still a page of servers
+    } finally {
+      _flagging = false;
+    }
+  }
+
+  /// A real connect timed in C, a few rows at a time so the list fills as it goes.
   Future<void> _pingAll() async {
     if (!_alive || _pinging) return;
     setState(() => _pinging = true);
     final ids = [for (final r in _servers.rows.take(48)) r.id];
     for (var i = 0; i < ids.length; i += 12) {
       if (!_alive) return;
-      final end = i + 12 > ids.length ? ids.length : i + 12;
-      final part = ids.sublist(i, end);
-      try {
-        final m = await IrRowsBridge.ping(part);
-        if (!_alive) return;
-        setState(() => _ping = {..._ping, ...m});
-      } catch (_) {}
+      // three calls at once, on the three probe threads; each does a few rows
+      final runs = <Future<Map<String, int>>>[];
+      for (var k = 0; k < 3; k++) {
+        final start = i + k * 4;
+        if (start >= ids.length) break;
+        final end = start + 4 > ids.length ? ids.length : start + 4;
+        runs.add(IrRowsBridge.ping(ids.sublist(start, end)));
+      }
+      for (final r in runs) {
+        try {
+          final m = await r;
+          if (!_alive) return;
+          setState(() => _ping = {..._ping, ...m});
+        } catch (_) {}
+      }
     }
     if (mounted) setState(() => _pinging = false);
   }
@@ -101,22 +144,10 @@ class _ServersPageState extends State<ServersPage> {
       await _servers.refresh();
       if (!_alive) return;
       _loadStats();
-      _loadCached();
+      _loadCached().then((_) => _flagPass());
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-  }
-
-  Future<void> _probeNext() async {
-    if (!_alive || _live['on'] == 'true') return;
-    final rows = _servers.rows;
-    while (_probeAt < rows.length && _cc.containsKey(rows[_probeAt].id)) _probeAt++;
-    if (_probeAt >= rows.length || _probeAt >= 300) return;
-    final id = rows[_probeAt].id;
-    final cc = await IrRowsBridge.flag(id);
-    if (!_alive) return;
-    if (cc.length == 2) setState(() => _cc[id] = cc.toLowerCase());
-    _probeAt++;
   }
 
   Future<void> _loadPings() async {
@@ -207,7 +238,6 @@ class _ServersPageState extends State<ServersPage> {
   void dispose() {
     _alive = false;
     _ticker?.cancel();
-    _flags?.cancel();
     _search.dispose();
     _servers.dispose();
     super.dispose();
@@ -236,6 +266,17 @@ class _ServersPageState extends State<ServersPage> {
         e.sort((a, b) => key(a).compareTo(key(b)));
       }
     }
+    // One control of the page's single bar: a row of 28dp boxes. Two bars of
+    // buttons above the list cost the height of three servers.
+    Widget btn(String tip, Widget icon, VoidCallback? onTap) => IconButton(
+          tooltip: tip,
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+          iconSize: 18,
+          icon: icon,
+          onPressed: onTap,
+        );
     return Scaffold(
       body: RefreshIndicator(
       key: const Key('ir-servers'),
@@ -268,79 +309,59 @@ class _ServersPageState extends State<ServersPage> {
                   ),
                 )
               else ...[
-                IconButton(
-                  tooltip: 'Search',
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints.tightFor(width: 30, height: 30),
-                  iconSize: 18,
-                  icon: const Icon(Icons.search_rounded),
-                  onPressed: () => setState(() => _searchOpen = true),
+                btn(
+                  'Search',
+                  const Icon(Icons.search_rounded),
+                  () => setState(() => _searchOpen = true),
+                ),
+                btn(
+                  'Ping all',
+                  _pinging
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.bolt_rounded),
+                  _pingAll,
+                ),
+                btn(
+                  'Update the list',
+                  _busy
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh_rounded),
+                  _busy ? null : _update,
+                ),
+                btn(
+                  'Sort by ping',
+                  Icon(_sortPing ? Icons.sort_rounded : Icons.sort_outlined),
+                  () => setState(() => _sortPing = !_sortPing),
+                ),
+                btn(
+                  'Reset all traffic',
+                  const Icon(Icons.cleaning_services_outlined),
+                  () async {
+                    await IrRowsBridge.statsResetAll();
+                    if (!_alive) return;
+                    setState(() => _stats = const {});
+                  },
                 ),
                 const Spacer(),
+                if (_servers.loading)
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                const SizedBox(width: 6),
+                Text('${_servers.rows.length}',
+                    style: theme.textTheme.labelMedium
+                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
               ],
-              IconButton(
-                tooltip: 'Ping all',
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(width: 30, height: 30),
-                iconSize: 18,
-                icon: _pinging
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.bolt_rounded),
-                onPressed: _pingAll,
-              ),
-              IconButton(
-                tooltip: 'Update the list',
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(width: 30, height: 30),
-                iconSize: 18,
-                icon: _busy
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.refresh_rounded),
-                onPressed: _busy ? null : _update,
-              ),
-              IconButton(
-                tooltip: 'Sort by ping',
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(width: 30, height: 30),
-                iconSize: 18,
-                icon: Icon(_sortPing ? Icons.sort_rounded : Icons.sort_outlined),
-                onPressed: () => setState(() => _sortPing = !_sortPing),
-              ),
-            ],
-          ),
-          Row(
-            children: [
-              IconButton(
-                tooltip: 'Reset all traffic',
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(width: 30, height: 30),
-                iconSize: 18,
-                icon: const Icon(Icons.cleaning_services_outlined),
-                onPressed: () async {
-                  await IrRowsBridge.statsResetAll();
-                  if (!_alive) return;
-                  setState(() => _stats = const {});
-                },
-              ),
-              const Spacer(),
-              if (_servers.loading)
-                const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-              const SizedBox(width: 8),
-              Text('${_servers.rows.length}',
-                  style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
             ],
           ),
           if (_servers.error != null) ...[

@@ -304,19 +304,20 @@ class MainActivity : FlutterActivity() {
                 }
                 "irPickPing" -> result.success(CoreService.lastDelay(this, CoreService.picked(this)))
                 "irPingsAll" -> result.success(Flags.allDelays(this))
-                "irPickInfo" -> inBackground(result) {
+                "irPickInfo" -> inProbe(result) {
                     Flags.info(this, CoreService.picked(this))
                 }
-                "irFlagOf" -> inBackground(result) {
+                "irFlagOf" -> inProbe(result) {
                     val id = CoreService.picked(this)
                     Flags.of(this, id).ifEmpty { Flags.probe(this, id) }
                 }
                 "irFlagsAll" -> result.success(Flags.all(this))
-                "irPing" -> inBackground(result) {
+                "irPing" -> inProbe(result) {
                     val ids = call.argument<List<String>>("ids") ?: emptyList()
                     val out = HashMap<String, Int>()
-                    // one short-lived core each: a dozen per call keeps the answer quick
-                    for (id in ids.take(12)) out[id] = Flags.delay(this, id)
+                    // one short-lived core each: a handful per call, and the
+                    // calls themselves run side by side on the probe threads
+                    for (id in ids.take(6)) out[id] = Flags.delay(this, id)
                     out
                 }
                 "irStatsAll" -> result.success(CoreService.statsAll(this))
@@ -328,7 +329,7 @@ class MainActivity : FlutterActivity() {
                     }
                     result.success(null)
                 }
-                "irFlag" -> inBackground(result) {
+                "irFlag" -> inProbe(result) {
                     Flags.probe(this, call.argument<String>("id") ?: "")
                 }
                 "irStats" -> inBackground(result) {
@@ -366,6 +367,11 @@ class MainActivity : FlutterActivity() {
     }
 
     private val worker = Executors.newSingleThreadExecutor()
+
+    /// A probe is a short-lived core and takes seconds. It gets its own small
+    /// pool so that a list of flags never queues the app's own answers (the
+    /// installed apps, the row store) behind it.
+    private val probeWorker = Executors.newFixedThreadPool(3)
     private val main = Handler(Looper.getMainLooper())
 
     /** Country codes for first-run routing; no phone or location permissions. */
@@ -392,6 +398,18 @@ class MainActivity : FlutterActivity() {
     /** Runs [work] off the UI thread and answers with its value. */
     private fun inBackground(result: Result, work: () -> Any?) {
         worker.execute {
+            val value = try {
+                work()
+            } catch (e: Exception) {
+                null
+            }
+            main.post { result.success(value) }
+        }
+    }
+
+    /** Runs a probe on the probe pool, where several rows can answer at once. */
+    private fun inProbe(result: Result, work: () -> Any?) {
+        probeWorker.execute {
             val value = try {
                 work()
             } catch (e: Exception) {

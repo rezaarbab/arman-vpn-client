@@ -41,8 +41,20 @@ class _BypassAppsPageState extends State<BypassAppsPage> {
   }
 
   Future<void> _load() async {
-    final apps = await AndroidCore.installedApps();
-    final routing = await AndroidCore.appRouting();
+    // A page that cannot ask the phone shows an empty list, not a spinner that
+    // never rests: the question can wait behind a probe, and the user should
+    // still see the page.
+    var apps = <InstalledApp>[];
+    var routing = AppRouting(
+      onlyChosen: false,
+      bypass: {},
+      only: {},
+      suggested: {},
+    );
+    try {
+      apps = await AndroidCore.installedApps();
+      routing = await AndroidCore.appRouting();
+    } catch (_) {}
     if (!mounted) return;
     setState(() {
       routing.onlyChosen = false;

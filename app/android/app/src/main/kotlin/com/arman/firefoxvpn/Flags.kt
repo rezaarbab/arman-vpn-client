@@ -3,7 +3,7 @@ package com.arman.firefoxvpn
 import android.content.Context
 import ir.v2rayng.compose.core.NativeSec
 import libv2ray.CoreCallbackHandler
-import kotlin.random.Random
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * A server's country, the way the app of origin learned it: a short-lived core is started
@@ -11,9 +11,14 @@ import kotlin.random.Random
  * letters are kept under the row's id. Nothing about the row's address is read here.
  *
  * Only while the VPN is down: a probe core beside a running tunnel is two cores on one phone.
+ * Several rows are probed at once, so their local ports come from a counter, not from a
+ * draw that can hand two of them the same one.
  */
 object Flags {
-    private val cache = HashMap<String, String>()
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val portSeed = AtomicInteger(0)
+
+    private fun port(): Int = 20000 + ((portSeed.getAndIncrement() and 0x7fffffff) % 2000)
 
     fun of(context: Context, id: String): String {
         cache[id]?.let { return it }
@@ -38,7 +43,7 @@ object Flags {
         if (CoreService.on || id.isBlank()) return -1
         val row = runCatching { NativeSec.rowOf(id) }.getOrDefault(-1)
         if (row < 0) return -1
-        val port = 20000 + Random.nextInt(2000)
+        val port = port()
         val quiet = object : CoreCallbackHandler {
             override fun startup(): Long = 0L
             override fun shutdown(): Long = 0L
@@ -74,17 +79,21 @@ object Flags {
         return out
     }
 
-    /** The picked row's own answers: delay, exit country and exit IP. */
+    /**
+     * The picked row's own answers: delay, exit country and exit IP - from one core. Two probes
+     * would ask the same server twice, and the home card is the one place that shows the answer
+     * right away.
+     */
     fun info(context: Context, id: String): Map<String, Any?> {
         val p = context.getSharedPreferences("blob_core", Context.MODE_PRIVATE)
         val out = HashMap<String, Any?>()
-        out["ms"] = delay(context, id)
+        out["ms"] = -1
         out["cc"] = p.getString("cc_" + id.take(64), "") ?: ""
         out["ip"] = p.getString("pi_" + id.take(64), "") ?: ""
         if (CoreService.on || id.isBlank()) return out
         val row = runCatching { NativeSec.rowOf(id) }.getOrDefault(-1)
         if (row < 0) return out
-        val port = 20000 + Random.nextInt(2000)
+        val port = port()
         val quiet = object : CoreCallbackHandler {
             override fun startup(): Long = 0L
             override fun shutdown(): Long = 0L
@@ -93,14 +102,16 @@ object Flags {
         val handle = runCatching { NativeSec.probeStart(row, port, quiet) }.getOrDefault(0)
         if (handle == 0) return out
         try {
-            val trace = NativeSec.probe("https://www.cloudflare.com/cdn-cgi/trace", "loc,ip", port)
-            var cc = ""
-            var ip = ""
-            for (line in trace.split('\n')) {
-                if (line.startsWith("loc=")) cc = line.removePrefix("loc=").trim().uppercase()
-                if (line.startsWith("ip=")) ip = line.removePrefix("ip=").trim()
-            }
+            val t0 = System.nanoTime()
+            // the library hands back only the asked-for words, in that order, ";"-separated
+            val parts = runCatching {
+                NativeSec.probe("https://www.cloudflare.com/cdn-cgi/trace", "ip;loc", port).split(';')
+            }.getOrDefault(emptyList())
+            val took = ((System.nanoTime() - t0) / 1000000L).toInt()
+            val ip = parts.getOrNull(0).orEmpty().trim()
+            val cc = parts.getOrNull(1).orEmpty().trim().uppercase()
             if (cc.length == 2) {
+                cache[id] = cc
                 p.edit().putString("cc_" + id.take(64), cc).apply()
                 out["cc"] = cc
             }
@@ -108,18 +119,25 @@ object Flags {
                 p.edit().putString("pi_" + id.take(64), ip).apply()
                 out["ip"] = ip
             }
+            // a round trip through a remote server is never under 10 ms: that is a local
+            // answer, and the card would paint a dead row green
+            if (parts.isNotEmpty() && took >= 10) out["ms"] = took
         } finally {
             runCatching { NativeSec.probeStop(handle) }
         }
         return out
     }
 
+    /**
+     * The row's country, measured now if no earlier run measured it. The same answer carries the
+     * exit IP, so the home card gets both from one probe instead of two.
+     */
     fun probe(context: Context, id: String): String {
         if (CoreService.on || id.isBlank()) return ""
         of(context, id).takeIf { it.isNotEmpty() }?.let { return it }
         val row = runCatching { NativeSec.rowOf(id) }.getOrDefault(-1)
         if (row < 0) return ""
-        val port = 20000 + Random.nextInt(2000)
+        val port = port()
         val quiet = object : CoreCallbackHandler {
             override fun startup(): Long = 0L
             override fun shutdown(): Long = 0L
@@ -128,19 +146,18 @@ object Flags {
         val handle = runCatching { NativeSec.probeStart(row, port, quiet) }.getOrDefault(0)
         if (handle == 0) return ""
         return try {
-            val code = NativeSec.probe(
-                "https://www.cloudflare.com/cdn-cgi/trace",
-                "loc",
-                port,
-            ).trim().uppercase()
-            if (code.length == 2) {
-                cache[id] = code
-                context.getSharedPreferences("blob_core", Context.MODE_PRIVATE)
-                    .edit().putString("cc_" + id.take(64), code).apply()
-                code
-            } else {
-                ""
-            }
+            val parts = runCatching {
+                NativeSec.probe("https://www.cloudflare.com/cdn-cgi/trace", "ip;loc", port).split(';')
+            }.getOrDefault(emptyList())
+            val cc = parts.getOrNull(1).orEmpty().trim().uppercase()
+            val ip = parts.getOrNull(0).orEmpty().trim()
+            if (cc.length != 2) return ""
+            cache[id] = cc
+            val edit = context.getSharedPreferences("blob_core", Context.MODE_PRIVATE)
+                .edit().putString("cc_" + id.take(64), cc)
+            if (ip.length in 7..45) edit.putString("pi_" + id.take(64), ip)
+            edit.apply()
+            cc
         } finally {
             runCatching { NativeSec.probeStop(handle) }
         }

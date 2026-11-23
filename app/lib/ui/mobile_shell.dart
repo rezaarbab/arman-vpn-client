@@ -85,6 +85,14 @@ class _MobileShellState extends State<MobileShell> {
     ),
   );
 
+  /// A page that brings its own top bar is pushed under nothing else: two bars
+  /// would put two titles over one screen.
+  void _pushBare(Widget Function() page) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (context) => _readable(page())),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
@@ -121,6 +129,7 @@ class _MobileShellState extends State<MobileShell> {
                 _SettingsList(
                   onOpenServers: openServers,
                   push: _push,
+                  pushBare: _pushBare,
                   core: core,
                   settings: settings,
                 ),
@@ -190,12 +199,14 @@ class _SettingsList extends StatefulWidget {
   const _SettingsList({
     required this.onOpenServers,
     required this.push,
+    required this.pushBare,
     required this.core,
     required this.settings,
   });
 
   final VoidCallback onOpenServers;
   final void Function(String title, Widget Function() page) push;
+  final void Function(Widget Function() page) pushBare;
   final CoreController core;
   final AppSettings settings;
 
@@ -220,6 +231,7 @@ class _SettingsListState extends State<_SettingsList> {
     final core = widget.core;
     final settings = widget.settings;
     final push = widget.push;
+    final pushBare = widget.pushBare;
     final onOpenServers = widget.onOpenServers;
     bool matches(String name) =>
         _query.isEmpty || foldForSearch(name).contains(_query);
@@ -285,8 +297,8 @@ class _SettingsListState extends State<_SettingsList> {
         row(Icons.public_rounded, l.navServers, onOpenServers),
         row(
           Icons.alt_route_rounded,
-          l.sectionRouting,
-          () => push('Per-app', () => BypassAppsPage()),
+          l.bypassApps,
+          () => pushBare(() => const BypassAppsPage()),
         ),
       ]),
       ?group(l.groupApp, [
