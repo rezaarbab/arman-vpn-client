@@ -225,14 +225,6 @@ class _ShellState extends State<Shell> {
                       settings: widget.settings,
                       onOpenServers: () =>
                           setState(() => _page = _Page.servers),
-                      onOpenConnection: () => setState(() {
-                        _page = _Page.settings;
-                        _settingsOpening = SettingsSection.connection;
-                      }),
-                      onOpenUpstreamProxy: () => setState(() {
-                        _page = _Page.settings;
-                        _settingsOpening = SettingsSection.upstreamProxy;
-                      }),
                     ),
                     _Page.servers => ServersPage(
                       core: core,

@@ -209,9 +209,11 @@ class _ServersPageState extends State<ServersPage> {
     final groups = <String, List<IrServer>>{};
     for (final r in _servers.rows) {
       final cc = (_cc[r.id] ?? '').toLowerCase();
+      final country = cc.isEmpty ? '' : (_countryNames[cc] ?? '').toLowerCase();
       if (q.isNotEmpty &&
           !r.name.toLowerCase().contains(q) &&
-          !(cc.isNotEmpty && cc.contains(q))) {
+          !(cc.isNotEmpty && cc.contains(q)) &&
+          !(country.isNotEmpty && country.contains(q))) {
         continue;
       }
       (groups[r.category.isEmpty ? 'Default' : r.category] ??= []).add(r);
@@ -245,11 +247,15 @@ class _ServersPageState extends State<ServersPage> {
               ),
               IconButton(
                 tooltip: 'Ping all',
+                visualDensity: VisualDensity.compact,
+                iconSize: 20,
                 icon: const Icon(Icons.bolt_rounded),
                 onPressed: _pingAll,
               ),
               IconButton(
                 tooltip: 'Update the list',
+                visualDensity: VisualDensity.compact,
+                iconSize: 20,
                 icon: _busy
                     ? const SizedBox(
                         width: 18,
@@ -261,6 +267,8 @@ class _ServersPageState extends State<ServersPage> {
               ),
               IconButton(
                 tooltip: 'Sort by ping',
+                visualDensity: VisualDensity.compact,
+                iconSize: 20,
                 icon: Icon(_sortPing ? Icons.sort_rounded : Icons.sort_outlined),
                 onPressed: () => setState(() => _sortPing = !_sortPing),
               ),
@@ -380,3 +388,27 @@ class _ServersPageState extends State<ServersPage> {
     );
   }
 }
+
+
+/// The names people search by, for the countries the flags cover most.
+const _countryNames = <String, String>{
+  'de': 'Germany', 'nl': 'Netherlands', 'fr': 'France', 'gb': 'United Kingdom',
+  'us': 'United States', 'ca': 'Canada', 'tr': 'Turkey', 'ir': 'Iran',
+  'fi': 'Finland', 'se': 'Sweden', 'no': 'Norway', 'dk': 'Denmark',
+  'it': 'Italy', 'es': 'Spain', 'pt': 'Portugal', 'at': 'Austria',
+  'be': 'Belgium', 'ch': 'Switzerland', 'pl': 'Poland', 'cz': 'Czechia',
+  'hu': 'Hungary', 'ro': 'Romania', 'bg': 'Bulgaria', 'gr': 'Greece',
+  'ru': 'Russia', 'ua': 'Ukraine', 'kz': 'Kazakhstan', 'ae': 'United Arab Emirates',
+  'sa': 'Saudi Arabia', 'qa': 'Qatar', 'il': 'Israel', 'in': 'India',
+  'jp': 'Japan', 'kr': 'South Korea', 'sg': 'Singapore', 'hk': 'Hong Kong',
+  'tw': 'Taiwan', 'cn': 'China', 'th': 'Thailand', 'vn': 'Vietnam',
+  'my': 'Malaysia', 'id': 'Indonesia', 'ph': 'Philippines', 'au': 'Australia',
+  'nz': 'New Zealand', 'br': 'Brazil', 'ar': 'Argentina', 'cl': 'Chile',
+  'mx': 'Mexico', 'co': 'Colombia', 'pe': 'Peru', 'za': 'South Africa',
+  'eg': 'Egypt', 'ma': 'Morocco', 'ng': 'Nigeria', 'ke': 'Kenya',
+  'am': 'Armenia', 'ge': 'Georgia', 'az': 'Azerbaijan', 'by': 'Belarus',
+  'md': 'Moldova', 'lt': 'Lithuania', 'lv': 'Latvia', 'ee': 'Estonia',
+  'cy': 'Cyprus', 'mt': 'Malta', 'lu': 'Luxembourg', 'is': 'Iceland',
+  'ie': 'Ireland', 'hr': 'Croatia', 'rs': 'Serbia', 'sk': 'Slovakia',
+  'si': 'Slovenia', 'al': 'Albania', 'mk': 'North Macedonia', 'ba': 'Bosnia',
+};

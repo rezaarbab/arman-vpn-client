@@ -45,6 +45,7 @@ class _BypassAppsPageState extends State<BypassAppsPage> {
     final routing = await AndroidCore.appRouting();
     if (!mounted) return;
     setState(() {
+      routing.onlyChosen = false;
       _routing = routing;
       _initial = routing.key;
       _apps = apps;
@@ -198,32 +199,8 @@ class _BypassAppsPageState extends State<BypassAppsPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          SegmentedButton<bool>(
-                            showSelectedIcon: false,
-                            segments: [
-                              ButtonSegment(
-                                value: false,
-                                label: Text(l.appModeExclude),
-                              ),
-                              ButtonSegment(
-                                value: true,
-                                label: Text(l.appModeInclude),
-                              ),
-                            ],
-                            selected: {routing.onlyChosen},
-                            onSelectionChanged: (v) {
-                              setState(() {
-                                routing.onlyChosen = v.first;
-                                _sort();
-                              });
-                              _save();
-                            },
-                          ),
-                          const SizedBox(height: 10),
                           Text(
-                            routing.onlyChosen
-                                ? l.appModeIncludeHint
-                                : l.appModeExcludeHint,
+                            l.appModeExcludeHint,
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurfaceVariant,
                             ),

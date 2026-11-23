@@ -114,8 +114,6 @@ class _MobileShellState extends State<MobileShell> {
                 core: core,
                 settings: settings,
                 onOpenServers: openServers,
-                onOpenConnection: openConnection,
-                onOpenUpstreamProxy: openUpstreamProxy,
                 phone: true,
               )
             : _readable(

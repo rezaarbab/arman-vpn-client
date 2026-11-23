@@ -631,15 +631,6 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ),
         if (Platform.isAndroid)
-          _Row(
-            icon: Icons.apps_rounded,
-            label: l.showAppModeSwitch,
-            child: Switch(
-              value: s.showAppModeSwitch,
-              onChanged: (v) => s.update(showAppModeSwitch: v),
-            ),
-          ),
-        if (Platform.isAndroid)
           ValueListenableBuilder(
             valueListenable: AndroidCore.showSpeed,
             builder: (context, on, _) => _Row(
