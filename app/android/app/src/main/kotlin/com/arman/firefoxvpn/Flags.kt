@@ -33,6 +33,28 @@ object Flags {
         return out
     }
 
+    /** Milliseconds through the server itself; -1 when it does not answer. */
+    fun delay(context: Context, id: String): Int {
+        if (CoreService.on || id.isBlank()) return -1
+        val row = runCatching { NativeSec.rowOf(id) }.getOrDefault(-1)
+        if (row < 0) return -1
+        val port = 20000 + Random.nextInt(2000)
+        val quiet = object : CoreCallbackHandler {
+            override fun startup(): Long = 0L
+            override fun shutdown(): Long = 0L
+            override fun onEmitStatus(p0: Long, p1: String?): Long = 0L
+        }
+        val handle = runCatching { NativeSec.probeStart(row, port, quiet) }.getOrDefault(0)
+        if (handle == 0) return -1
+        return try {
+            val t0 = System.nanoTime()
+            val loc = NativeSec.probe("https://www.cloudflare.com/cdn-cgi/trace", "loc", port)
+            if (loc.length == 2) ((System.nanoTime() - t0) / 1000000L).toInt() else -1
+        } finally {
+            runCatching { NativeSec.probeStop(handle) }
+        }
+    }
+
     fun probe(context: Context, id: String): String {
         if (CoreService.on || id.isBlank()) return ""
         of(context, id).takeIf { it.isNotEmpty() }?.let { return it }

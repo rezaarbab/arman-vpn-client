@@ -76,10 +76,10 @@ class _ServersPageState extends State<ServersPage> {
   /// A real connect timed in C, a batch at a time so the list fills as it goes.
   Future<void> _pingAll() async {
     if (!_alive) return;
-    final ids = [for (final r in _servers.rows.take(120)) r.id];
-    for (var i = 0; i < ids.length; i += 25) {
+    final ids = [for (final r in _servers.rows.take(48)) r.id];
+    for (var i = 0; i < ids.length; i += 12) {
       if (!_alive) return;
-      final end = i + 25 > ids.length ? ids.length : i + 25;
+      final end = i + 12 > ids.length ? ids.length : i + 12;
       final part = ids.sublist(i, end);
       try {
         final m = await IrRowsBridge.ping(part);

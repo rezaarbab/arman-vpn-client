@@ -302,10 +302,8 @@ class MainActivity : FlutterActivity() {
                 "irPing" -> inBackground(result) {
                     val ids = call.argument<List<String>>("ids") ?: emptyList()
                     val out = HashMap<String, Int>()
-                    for (id in ids.take(30)) {
-                        val row = IrRows.rowOf(id)
-                        out[id] = if (row < 0) -1 else ir.v2rayng.compose.core.NativeSec.tcpPing(row, 2500)
-                    }
+                    // one short-lived core each: a dozen per call keeps the answer quick
+                    for (id in ids.take(12)) out[id] = Flags.delay(this, id)
                     out
                 }
                 "irStatsAll" -> result.success(CoreService.statsAll(this))

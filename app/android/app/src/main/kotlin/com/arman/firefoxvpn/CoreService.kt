@@ -536,7 +536,7 @@ class CoreService : VpnService() {
             val ms = if (row < 0) -1 else NativeSec.tcpPing(row, 5000)
             val m = mapOf(
                 "at" to isoTime(System.currentTimeMillis()),
-                "ok" to connected,
+                "ok" to (on || connected),
                 "target" to "tcp",
                 "response_ms" to ms,
                 "total_ms" to ms,
