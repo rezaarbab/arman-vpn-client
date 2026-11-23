@@ -80,7 +80,7 @@ jobs:
             Arman-VPN-Android-x86_64.apk)
           } 2>&1 | tee build.log
           status=${PIPESTATUS[0]}
-          grep -E '^(e: |w: )|error:|^FAILURE: |^> Task .* FAILED|^Execution failed|Caused by:|^> ' build.log \
+          grep -E '^(e: |w: )|error:|Error: |^FAILURE: |^> Task .* FAILED|^Execution failed|Caused by:|^> |^lib/|^test/' build.log \
             | head -80 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::$line"; done
           # R8 and the packaging steps name their failure in a block no single
           # line matches; the end of the build says it.
