@@ -343,10 +343,11 @@ class _DesktopHome extends StatelessWidget {
 
   bool get _running => status.state.phase == Phase.running;
 
-  /// The core is connecting, or the proxy still needs a passing test.
-  bool get _confirming =>
-      status.connectPending ||
-      (status.proxyOn && _running && !status.confirmedBy(core.lastTest));
+  /// Connecting means the dial has not answered yet, and nothing more. It is
+  /// not a verdict about a passing test: our core says running when the tunnel
+  /// is up, and a connected phone has to read Connected the moment the page is
+  /// built again after a visit to Settings.
+  bool get _confirming => status.connectPending;
 
   Color _accent(_HomePalette p) => switch (status.state.phase) {
     _ when status.connectPending => p.busy,
@@ -369,7 +370,8 @@ class _DesktopHome extends StatelessWidget {
     final noNetwork = !status.connectPending && status.noNetwork && on;
     final failing =
         !status.connectPending &&
-        confirming &&
+        on &&
+        _running &&
         ((proxy?.wakeError.isNotEmpty ?? false) || test?.ok == false);
     // The real reason; a long press or hover shows the core's own text.
     final failure = failing ? failureText(l, proxy, test) : null;
@@ -1127,12 +1129,10 @@ class _PhoneHome extends StatelessWidget {
     final theme = Theme.of(context);
     final look = PhaseLook.of(l, status);
     final running = status.state.phase == Phase.running;
-    // Connecting, or connected but still waiting on a passing test: the
-    // same orange state the label shows, so the ring moves with it.
+    // The dial has not answered yet: the same orange state the label shows,
+    // so the ring moves with it. A running tunnel is never put back to this.
     final connecting =
-        status.connectPending ||
-        status.state.phase == Phase.starting ||
-        (status.proxyOn && running && !status.confirmedBy(core.lastTest));
+        status.connectPending || status.state.phase == Phase.starting;
     final canSwitch = status.systemProxySupported;
     final width = box.maxWidth;
     // Not enough height for the switch at its full size: it shrinks and
@@ -1157,17 +1157,16 @@ class _PhoneHome extends StatelessWidget {
     );
     final on = status.proxyOn;
     final proxy = status.proxy;
-    // The phone's VPN is "Connecting", in orange, until a test confirms it
-    // works (the controller tests again meanwhile): with no internet it
-    // does not claim to be connected.
-    final confirming =
-        status.connectPending ||
-        (on && running && !canSwitch && !status.confirmedBy(core.lastTest));
+    // The dial has not answered yet, and nothing else: a tunnel that is up
+    // stays Connected when the page is built again after a visit elsewhere.
+    final confirming = status.connectPending;
     final test = status.isCurrentTest(core.lastTest) ? core.lastTest : null;
     final noNetwork = !status.connectPending && status.noNetwork && on;
+    // A running tunnel its own last test calls broken says so in words.
     final failing =
         !status.connectPending &&
-        confirming &&
+        on &&
+        running &&
         ((proxy?.wakeError.isNotEmpty ?? false) || test?.ok == false);
     // The real reason; a long press or hover shows the core's own text.
     final failure = failing ? failureText(l, proxy, test) : null;
@@ -2964,11 +2963,14 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
       palette: p,
       onTap: widget.onTap,
       compact: true,
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(
-            width: 44,
-            height: 30,
+          Row(
+            children: [
+              SizedBox(
+                width: 44,
+                height: 30,
             child: _cc.isEmpty
                 ? const SizedBox.shrink()
                 : ClipRRect(
@@ -3043,6 +3045,101 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
               ),
             ),
           Icon(Icons.chevron_right_rounded, color: p.muted),
+            ],
+          ),
+          _MyExit(muted: p.muted),
+        ],
+      ),
+    );
+  }
+}
+
+/// The exit this phone is seen from, with that address's own country: the same
+/// line whether the tunnel is up or down, because what it answers is "where do
+/// I look like I am", not "which server did I choose". The fetch is a direct
+/// page read - no core of its own - so it works in both states.
+class _MyExit extends StatefulWidget {
+  const _MyExit({required this.muted});
+
+  final Color muted;
+
+  @override
+  State<_MyExit> createState() => _MyExitState();
+}
+
+class _MyExitState extends State<_MyExit> {
+  /// One read per run: opening Home is not a reason to ask the network.
+  static bool _fetched = false;
+
+  String _cc = '';
+  String _ip = '';
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final ask = !_fetched;
+    _fetched = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load(ask);
+    });
+  }
+
+  Future<void> _load(bool ask) async {
+    if (ask) setState(() => _busy = true);
+    try {
+      final m = await IrRowsBridge.mine(ask: ask);
+      if (!mounted) return;
+      setState(() {
+        _ip = m['ip'] ?? '';
+        final cc = (m['cc'] ?? '').toLowerCase();
+        if (cc.length == 2) _cc = cc;
+        _busy = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (_ip.isEmpty && _cc.isEmpty && !_busy) return const SizedBox.shrink();
+    final style = theme.textTheme.labelSmall?.copyWith(color: widget.muted);
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 18,
+            height: 13,
+            child: _cc.isEmpty
+                ? const SizedBox.shrink()
+                : ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: SvgPicture.asset(
+                      'assets/flags/$_cc.svg',
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(child: Text(_ip.isEmpty ? '—' : _ip, style: style)),
+          IconButton(
+            tooltip: 'My exit IP',
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 22, height: 22),
+            iconSize: 14,
+            icon: _busy
+                ? const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(Icons.refresh_rounded, color: widget.muted),
+            onPressed: () => _load(true),
+          ),
         ],
       ),
     );

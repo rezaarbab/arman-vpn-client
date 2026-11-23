@@ -64,7 +64,11 @@ object Sync {
             return -1
         }
         val rows = NativeSec.payloadRows()
-        CoreService.log("sync: $rows servers")
+        // A sync hands over the whole list again, including what the user deleted: the ids kept
+        // under drop_ids go back out before the list is shown, or a deleted server returns on the
+        // next pull and the delete means nothing.
+        if (rows > 0) IrRows.reapplyDrops(context)
+        CoreService.log("sync: ${NativeSec.payloadRows()} servers")
         return if (rows > 0) 1 else 0
     }
 

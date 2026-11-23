@@ -83,8 +83,23 @@ class IrServers extends ChangeNotifier {
     }
   }
 
-  Map<String, List<IrServer>> byCategory() {
-    final out = <String, List<IrServer>>{};
+  /// Delete rows for good. The store forgets them and so does this list,
+  /// without waiting for the next exchange.
+  Future<bool> dropAll(List<String> ids) async {
+    if (ids.isEmpty) return true;
+    final kept = await IrRowsBridge.drop(ids);
+    if (kept < 0) {
+      error = 'the delete was refused';
+      _notify();
+      return false;
+    }
+    rows = [for (final r in rows) if (!ids.contains(r.id)) r];
+    error = null;
+    _notify();
+    return true;
+  }
+
+  Map<String, List<IrServer>> byCategory() {    final out = <String, List<IrServer>>{};
     for (final r in rows) {
       (out[r.category.isEmpty ? 'Default' : r.category] ??= []).add(r);
     }

@@ -171,6 +171,52 @@ class _ServersPageState extends State<ServersPage> {
     } catch (_) {}
   }
 
+  /// The rows this run measured and that did not answer. A row nobody pinged
+  /// is not dead, only unknown, so it is never in this list.
+  List<String> get _dead => [
+        for (final r in _servers.rows)
+          if (_ping.containsKey(r.id) && _ping[r.id]! < 10) r.id,
+      ];
+
+  /// Out of the store, out of the sealed copy, out of the caches: a deleted
+  /// server stays out, including through the next sync.
+  Future<void> _remove(List<String> ids) async {
+    if (ids.isEmpty || !_alive) return;
+    final one = ids.length == 1;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(one ? 'Remove this server?' : 'Remove ${ids.length} dead servers?'),
+        content: Text(
+          one
+              ? 'It leaves the list and the stored copy, and the next sync will not bring it back.'
+              : 'These did not answer the ping. They leave the list and the stored copy, and the next sync will not bring them back.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !_alive) return;
+    await _servers.dropAll(ids);
+    if (!_alive) return;
+    setState(() {
+      for (final id in ids) {
+        _ping.remove(id);
+        _cc.remove(id);
+        _stats.remove(id);
+        _asked.remove(id);
+      }
+    });
+  }
+
   /// Each row's last session, so the line is there before anything connects.
   Future<void> _loadStats() async {
     final ids = [for (final r in _servers.rows.take(400)) r.id];
@@ -261,7 +307,7 @@ class _ServersPageState extends State<ServersPage> {
     }
     if (_sortPing) {
       int key(IrServer r) =>
-          _ping[r.id] == null || _ping[r.id]! < 0 ? 1 << 30 : _ping[r.id]!;
+          _ping[r.id] == null || _ping[r.id]! < 10 ? 1 << 30 : _ping[r.id]!;
       for (final e in groups.values) {
         e.sort((a, b) => key(a).compareTo(key(b)));
       }
@@ -341,6 +387,12 @@ class _ServersPageState extends State<ServersPage> {
                   Icon(_sortPing ? Icons.sort_rounded : Icons.sort_outlined),
                   () => setState(() => _sortPing = !_sortPing),
                 ),
+                if (_dead.isNotEmpty)
+                  btn(
+                    'Remove ${_dead.length} that did not answer',
+                    const Icon(Icons.delete_outline_rounded),
+                    () => _remove(_dead),
+                  ),
                 btn(
                   'Reset all traffic',
                   const Icon(Icons.cleaning_services_outlined),
@@ -447,6 +499,8 @@ class _ServersPageState extends State<ServersPage> {
                         setState(() => _picked = row.id);
                         IrRowsBridge.pick(row.id).catchError((Object _) {});
                       },
+                      // Held down: this row leaves the list and the stored copy.
+                      onLongPress: () => _remove([row.id]),
                     ),
                 ],
               ),
@@ -490,7 +544,7 @@ class _PingPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final dead = ms < 0;
+    final dead = ms < 10;
     final color = dead
         ? theme.colorScheme.outline
         : ms < 150

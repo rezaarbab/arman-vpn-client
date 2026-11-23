@@ -79,6 +79,15 @@ class IrRowsBridge {
     return {for (final e in (m ?? {}).entries) '${e.key}': '${e.value}'};
   }
 
+  /// This handset's own exit: the IP it is seen from and that address's
+  /// country, with the tunnel down as well as up. [ask] fetches it now; without
+  /// it the answer is what an earlier fetch left, which is what opening a page
+  /// should cost.
+  static Future<Map<String, String>> mine({bool ask = false}) async {
+    final m = await _ch.invokeMethod<Map>('irMine', {'ask': ask});
+    return {for (final e in (m ?? {}).entries) '${e.key}': '${e.value}'};
+  }
+
   static Future<int> pickPing() async =>
       await _ch.invokeMethod<int>('irPickPing') ?? -1;
 
@@ -107,4 +116,10 @@ class IrRowsBridge {
   /// The row named before; "" when none.
   static Future<String> picked() async =>
       await _ch.invokeMethod<String>('irPicked') ?? '';
+
+  /// Take these rows out of the store for good - the sealed copy with them, so
+  /// the next start does not list them either. The answer is how many remain,
+  /// or -1 when the store refused.
+  static Future<int> drop(List<String> ids) async =>
+      await _ch.invokeMethod<int>('irRowDrop', {'ids': ids}) ?? -1;
 }

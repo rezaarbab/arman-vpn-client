@@ -41,6 +41,47 @@ object IrRows {
             "the gate did not load: " + NativeSec.loadWhy().ifBlank { "no reason" }
         }
 
+    /** The ids the user deleted, kept so a later sync does not hand the dead server back. */
+    fun dropped(context: android.content.Context): String =
+        context.getSharedPreferences("blob_core", android.content.Context.MODE_PRIVATE)
+            .getString("drop_ids", "") ?: ""
+
+    /**
+     * Take these rows out of the store, out of the sealed copy the next start reads, and out of
+     * every cache that measured them. One call for the whole batch: the store is sealed again
+     * each time, so a hundred deletes must not mean a hundred seals.
+     *
+     * The ids are remembered because the next sync hands over the whole list again - without
+     * them a deleted server would be back on the screen by the next pull.
+     */
+    fun drop(context: android.content.Context, ids: List<String>): Int {
+        val clean = ids.filter { it.isNotBlank() }.distinct()
+        if (clean.isEmpty()) return -1
+        val p = context.getSharedPreferences("blob_core", android.content.Context.MODE_PRIVATE)
+        val keptList = (dropped(context).split(';').filter { it.isNotBlank() } + clean).distinct()
+        val edit = p.edit().putString("drop_ids", keptList.joinToString(";"))
+        for (id in clean) {
+            val t = id.take(64)
+            edit.remove("cc_$t").remove("pd_$t").remove("pi_$t").remove("stats_$t")
+        }
+        edit.apply()
+        val kept = NativeSec.drop(clean.joinToString(";"))
+        CoreService.log(
+            if (kept < 0) "list: the delete was refused"
+            else "list: ${clean.size} servers removed, ${kept} left"
+        )
+        return kept
+    }
+
+    fun drop(context: android.content.Context, id: String): Int = drop(context, listOf(id))
+
+    /** After a sync replaced the store: everything the user deleted goes out again, in one call. */
+    fun reapplyDrops(context: android.content.Context) {
+        val ids = dropped(context)
+        if (ids.isEmpty()) return
+        if (NativeSec.drop(ids) < 0) CoreService.log("list: the delete was refused")
+    }
+
     private fun field(i: Int, which: Int): String =
         runCatching { NativeSec.payloadText(i, which) }.getOrDefault("")
 }

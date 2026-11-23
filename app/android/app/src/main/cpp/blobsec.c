@@ -3271,6 +3271,9 @@ static const sblob g_sb[] = {
         0x1d, 0xed, 0x41, 0xe9, 0x9d, 0xcd, 0x39, 0x91, 0xdd, 0x6d, 0xf1, 0x49, 
         0x1d, 0x8d, 0x39, 0x21, 0x9d, 
     } },   /* javax/crypto/spec/SecretKeySpec */
+    { 7, {
+        0x3f, 0x85, 0xf0, 0x60, 0xb3, 0x31, 0x8b
+    } },   /* rowDrop */
 };
 
 /** the decoded text of one entry; valid until six more have been decoded */
@@ -7758,6 +7761,92 @@ Java_ir_v2rayng_compose_core_NativeSec_scrubUtf8(JNIEnv *env, jclass cls, jbyteA
 
 
 
+/** is [id] one whole entry of a ';' separated list? a substring is not a match: "1" is inside "srv-10" */
+static int id_in_list(const char *list, const char *id) {
+    size_t n = strlen(id);
+    if (n == 0 || list == NULL) return 0;
+    const char *p = list;
+    for (;;) {
+        const char *e = strchr(p, ';');
+        size_t len = e ? (size_t) (e - p) : strlen(p);
+        if (len == n && strncmp(p, id, n) == 0) return 1;
+        if (e == NULL) return 0;
+        p = e + 1;
+    }
+}
+
+/**
+ * Take the listed rows out of the store and store what is left, so a server the user deleted is
+ * gone from this start and from the next one. The list is ';' separated ids - the only handle the
+ * app is allowed to keep for a server - and the answer is how many rows remain.
+ *
+ * A new array is built and swapped in, never compacted in place: a dial reading a row on another
+ * thread must not be handed memory that is being moved under it.
+ */
+static jint JNICALL
+Java_ir_v2rayng_compose_core_NativeSec_rowDrop(JNIEnv *env, jclass cls, jstring jids) {
+    call_begin("drop:entered");
+    if (jids == NULL) { set_step("drop:no-ids"); return -1; }
+    char want[4096];
+    want[0] = 0;
+    const char *jin = (*env)->GetStringUTFChars(env, jids, NULL);
+    if (jin == NULL) {
+        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+        set_step("drop:ids");
+        return -1;
+    }
+    snprintf(want, sizeof(want), "%s", jin);
+    (*env)->ReleaseStringUTFChars(env, jids, jin);
+    plr_t *keep = NULL;
+    int kept = 0, saw = 0, total = 0;
+    pthread_mutex_lock(&g_store_mtx);
+    if (g_rows != NULL && g_rows_n > 0) {
+        total = g_rows_n;
+        keep = (plr_t *) malloc(sizeof(plr_t) * (size_t) g_rows_n);
+        if (keep == NULL) {
+            pthread_mutex_unlock(&g_store_mtx);
+            set_step("drop:alloc");
+            return -1;
+        }
+        for (int i = 0; i < g_rows_n; i++) {
+            if (id_in_list(want, g_rows[i].id)) { saw++; continue; }
+            keep[kept++] = g_rows[i];
+        }
+    }
+    pthread_mutex_unlock(&g_store_mtx);
+    if (keep == NULL) { set_step("drop:no-store"); return 0; }
+    if (saw == 0) { free(keep); set_step("drop:none-matched"); return total; }
+    rows_install(keep, kept);
+    /* the key is copied out of the decode window first: pref_put decodes strings of its own, and
+       six of them are alive at most - the store's name must not be the one that rotates out */
+    char key[32];
+    snprintf(key, sizeof(key), "%s", ROWS_KEY);
+    /* the sealed copy goes with it: a restore at the next start would otherwise put the deleted
+       server back without asking the worker for anything. Deleting the last row leaves an empty
+       store, and rows_seal answers nothing for that, so the key is cleared by hand. */
+    if (kept == 0) {
+        set_step(pref_put(env, key, "") ? "drop:ok" : "drop:write");
+        return 0;
+    }
+    jstring sealed = rows_seal(env, cls);
+    if (sealed == NULL) {
+        set_step("drop:seal");
+    } else {
+        const char *sv = (*env)->GetStringUTFChars(env, sealed, NULL);
+        if (sv == NULL) {
+            if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+            set_step("drop:seal-read");
+        } else {
+            int put = pref_put(env, key, sv);
+            (*env)->ReleaseStringUTFChars(env, sealed, sv);
+            set_step(put ? "drop:ok" : "drop:write");
+        }
+        (*env)->DeleteLocalRef(env, sealed);
+    }
+    return kept;
+}
+
+
 /* ============================ explicit registration ============================
  * Every entry point used to be found by name: the JVM looked up
  * Java_ir_v2rayng_compose_core_NativeSec_vaultOpen in the dynamic symbol table, so a strings dump
@@ -7776,7 +7865,7 @@ int blobgate_register(JNIEnv *env);
 const char *sb(int idx);
 
 static int reg_sec(JNIEnv *env) {
-    /* 46 entry points, named by index: the name and the signature come out of the
+    /* 47 entry points, named by index: the name and the signature come out of the
      * same encrypted table as every other interface string, so the registration no longer reads as
      * an inventory of what this library can be asked to do. One RegisterNatives per method, because
      * sb() keeps six decoded strings alive at most and 46 rows would need twice that.
@@ -7786,14 +7875,14 @@ static int reg_sec(JNIEnv *env) {
         208, 209, 210, 211, 212, 213, 214, 215, 169, 216,
         217, 218, 219, 220, 221, 222, 223, 224, 225, 226,
         227, 228, 229, 230, 231, 232, 233, 234, 235, 236,
-        237, 238, 239, 240, 241, 242,
+        237, 238, 239, 240, 241, 242, 265,
     };
     static const short g_sec_sigs[] = {
         60, 243, 71, 244, 245, 6, 246, 245, 245, 60,
         105, 96, 6, 136, 60, 117, 6, 247, 248, 6,
         249, 250, 251, 51, 252, 253, 136, 60, 136, 136,
         60, 254, 60, 255, 256, 45, 136, 60, 257, 68,
-        258, 259, 105, 260, 254, 261,
+        258, 259, 105, 260, 254, 261, 254,
     };
     static const void *const g_sec_fns[] = {
         (void *) Java_ir_v2rayng_compose_core_NativeSec_selftest,
@@ -7842,6 +7931,7 @@ static int reg_sec(JNIEnv *env) {
         (void *) Java_ir_v2rayng_compose_core_NativeSec_proofFor,
         (void *) Java_ir_v2rayng_compose_core_NativeSec_payloadRowOfId,
         (void *) Java_ir_v2rayng_compose_core_NativeSec_tcpPingRow,
+        (void *) Java_ir_v2rayng_compose_core_NativeSec_rowDrop,
     };
     jclass c = need_class(env, sb(43));
     if (c == NULL) { if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env); return 0; }

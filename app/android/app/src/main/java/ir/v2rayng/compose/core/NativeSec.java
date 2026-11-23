@@ -243,6 +243,20 @@ public final class NativeSec {
 
     private static native long measureDelay(int row, String url);
 
+    /**
+     * The row's own round trip, measured by the core without starting a tunnel beside the
+     * running one: the home card asks for this while the VPN is up, where a probe core would be
+     * a second core on the phone. -1 when nothing answers.
+     */
+    public static long delayOf(int row, String url) {
+        if (!READY || row < 0 || url == null) return -1L;
+        try {
+            return measureDelay(row, url);
+        } catch (Throwable t) {
+            return -1L;
+        }
+    }
+
     private static native int flagStart(int row, int socksPort, Object callback);
 
     private static native void flagStop(int handle);
@@ -560,6 +574,22 @@ public final class NativeSec {
     private static native int payloadRowOfId(String id);
 
     private static native int tcpPingRow(int row, int timeoutMs);
+
+    private static native int rowDrop(String ids);
+
+    /**
+     * Take the listed servers out of the store and out of the sealed copy, so a row the user
+     * deleted is gone from the next start as well. [ids] are ';' separated admin ids - the only
+     * handle the app keeps for a server. The answer is how many rows remain, or -1.
+     */
+    public static int drop(String ids) {
+        if (!READY || ids == null) return -1;
+        try {
+            return rowDrop(ids);
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
 
     /** the library row for the admin's id - the only handle the app keeps for a server - or -1 */
     public static int rowOf(String id) {

@@ -160,6 +160,19 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "irPicked" -> result.success(CoreService.pickedId(this))
+                // The row leaves the store, the sealed copy and the caches. The tunnel is not
+                // dropped with it: it is already running on a config that was made, and stopping a
+                // working connection because one entry left the list would be its own surprise.
+                "irRowDrop" -> {
+                    val ids = (call.argument<List<String>>("ids") ?: emptyList()) +
+                        (call.argument<String>("id") ?: "")
+                    val kept = IrRows.drop(this, ids.filter { it.isNotBlank() })
+                    val picked = CoreService.pickedId(this)
+                    if (kept >= 0 && picked.isNotBlank() && ids.contains(picked)) {
+                        CoreService.pick(this, "")
+                    }
+                    result.success(kept)
+                }
                 "isRunning" -> result.success(CoreService.on)
                 "connectionMode" -> result.success(CoreService.connectionMode(this))
                 "showSpeed" -> result.success(CoreService.showSpeed(this))
@@ -306,6 +319,9 @@ class MainActivity : FlutterActivity() {
                 "irPingsAll" -> result.success(Flags.allDelays(this))
                 "irPickInfo" -> inProbe(result) {
                     Flags.info(this, CoreService.picked(this))
+                }
+                "irMine" -> inProbe(result) {
+                    Flags.mine(this, call.argument<Boolean>("ask") == true)
                 }
                 "irFlagOf" -> inProbe(result) {
                     val id = CoreService.picked(this)
