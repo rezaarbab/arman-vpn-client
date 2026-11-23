@@ -3274,6 +3274,36 @@ static const sblob g_sb[] = {
     { 7, {
         0x3f, 0x85, 0xf0, 0x60, 0xb3, 0x31, 0x8b
     } },   /* rowDrop */
+    { 17, {
+        0x04, 0x7d, 0xd2, 0x33, 0x93, 0x47, 0x35, 0x98, 0x3d, 0x81,
+        0xf9, 0x43, 0xa7, 0x4b, 0x6b, 0xec, 0x13
+    } },   /* https://ipwho.is/ */   /* index 266, round trip "https://ipwho.is/" */
+    { 12, {
+        0x6c, 0xc3, 0x3c, 0x88, 0xf7, 0x52, 0xc4, 0x05, 0x94, 0xfb,
+        0x55, 0xab
+    } },   /* country_code */   /* index 267, round trip "country_code" */
+    { 20, {
+        0x44, 0xaa, 0x1e, 0x64, 0x8d, 0x51, 0xb9, 0x0d, 0x39, 0xfa,
+        0x3e, 0x88, 0xfe, 0x66, 0xa0, 0x05, 0x8c, 0xfe, 0x4b, 0xa6
+    } },   /* java/net/InetAddress */   /* index 268, round trip "java/net/InetAddress" */
+    { 12, {
+        0xae, 0x03, 0x77, 0xe1, 0x51, 0xb6, 0x35, 0x6d, 0xff, 0x2f,
+        0x86, 0xed
+    } },   /* getAllByName */   /* index 269, round trip "getAllByName" */
+    { 43, {
+        0xc0, 0xc9, 0x48, 0xde, 0x2a, 0x98, 0xb9, 0x5f, 0xb1, 0x03,
+        0x6d, 0x88, 0x17, 0x95, 0x0c, 0x72, 0xd6, 0x32, 0xc9, 0xa6,
+        0x77, 0x85, 0x0c, 0x62, 0xd6, 0x5c, 0xf5, 0x19, 0x71, 0xc5,
+        0x61, 0xa2, 0xe6, 0x40, 0xb6, 0x1e, 0x98, 0xfd, 0x44, 0xb6,
+        0x03, 0x7e, 0x91
+    } },   /* (Ljava/lang/String;)[Ljava/net/InetAddress; */   /* index 270, round trip "(Ljava/lang/String;)[Ljava/net/InetAddress;" */
+    { 14, {
+        0xec, 0x4d, 0xb1, 0x2a, 0x90, 0xef, 0x4d, 0x97, 0x17, 0x74,
+        0xdf, 0x2f, 0x94, 0xf7
+    } },   /* getHostAddress */   /* index 271, round trip "getHostAddress" */
+    { 9, {
+        0xd8, 0x28, 0x93, 0xcd, 0x71, 0xd8, 0x39, 0x81, 0xf7
+    } },   /* rowLocate */   /* index 272, round trip "rowLocate" */
 };
 
 /** the decoded text of one entry; valid until six more have been decoded */
@@ -7847,6 +7877,100 @@ Java_ir_v2rayng_compose_core_NativeSec_rowDrop(JNIEnv *env, jclass cls, jstring 
 }
 
 
+/**
+ * The row's address as a dotted ip. A numeric host is used as it stands; a name is resolved
+ * here, so what leaves this file is a location and never a hostname - which is the whole reason
+ * the lookup lives on this side.
+ */
+static int row_ip(JNIEnv *env, int row, char *out, int cap) {
+    char host[PL_ADDR];
+    out[0] = 0;
+    pthread_mutex_lock(&g_store_mtx);
+    if (row < 0 || row >= g_rows_n) { pthread_mutex_unlock(&g_store_mtx); return 0; }
+    snprintf(host, sizeof(host), "%s", g_rows[row].addr);
+    pthread_mutex_unlock(&g_store_mtx);
+    if (host[0] == 0) return 0;
+    int numeric = 1;
+    for (char *p = host; *p != 0; p++) {
+        if (!((*p >= '0' && *p <= '9') || *p == '.' || *p == ':')) { numeric = 0; break; }
+    }
+    if (numeric) { snprintf(out, cap, "%s", host); return 1; }
+    jclass ia = need_class(env, sb(268));
+    if (ia == NULL) return 0;
+    jmethodID mAll = mid_lookup_static(env, ia, sb(269), sb(270), "locate:getAllByName");
+    jstring jhost = (*env)->NewStringUTF(env, host);
+    jobjectArray arr = (mAll != NULL && jhost != NULL)
+        ? (jobjectArray) (*env)->CallStaticObjectMethod(env, ia, mAll, jhost) : NULL;
+    if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); arr = NULL; }
+    int ok = 0;
+    if (arr != NULL && (*env)->GetArrayLength(env, arr) > 0) {
+        jobject one = (*env)->GetObjectArrayElement(env, arr, 0);
+        jmethodID mAddr = mid_lookup(env, ia, sb(271), sb(105), "locate:getHostAddress");
+        jstring js = (one != NULL && mAddr != NULL)
+            ? (jstring) (*env)->CallObjectMethod(env, one, mAddr) : NULL;
+        if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); js = NULL; }
+        if (js != NULL) {
+            const char *cs = (*env)->GetStringUTFChars(env, js, NULL);
+            if (cs != NULL) {
+                snprintf(out, cap, "%s", cs);
+                (*env)->ReleaseStringUTFChars(env, js, cs);
+                ok = 1;
+            }
+            (*env)->DeleteLocalRef(env, js);
+        }
+        if (one != NULL) (*env)->DeleteLocalRef(env, one);
+    }
+    if (jhost != NULL) (*env)->DeleteLocalRef(env, jhost);
+    if (arr != NULL) (*env)->DeleteLocalRef(env, arr);
+    (*env)->DeleteLocalRef(env, ia);
+    if (!ok) set_step("locate:resolve");
+    return ok;
+}
+
+/**
+ * Where this server is: the row's address, resolved here, and the country that address belongs
+ * to, read from ipwho.is with no core of any kind. A page and a DNS answer - a few hundred
+ * milliseconds - against the seconds a probe core takes, and it works with the tunnel up, down,
+ * or on a handset that would never start a second core.
+ *
+ * The answer is "ip;cc"; a country that is not two letters is dropped, because a provider that
+ * did not know answers "null" and a flag cannot be made of that.
+ */
+static jbyteArray JNICALL
+Java_ir_v2rayng_compose_core_NativeSec_rowLocate(JNIEnv *env, jclass cls, jint jrow) {
+    call_begin("locate:entered");
+    char ip[128];
+    if (!row_ip(env, (int) jrow, ip, sizeof(ip))) return NULL;
+    char url[224];
+    snprintf(url, sizeof(url), "%s%s", sb(266), ip);
+    jstring jurl = (*env)->NewStringUTF(env, url);
+    jstring jkeys = (*env)->NewStringUTF(env, sb(267));
+    jbyteArray got = (jurl != NULL && jkeys != NULL)
+        ? Java_ir_v2rayng_compose_core_NativeSec_netProbe(env, cls, jurl, jkeys, 0) : NULL;
+    char cc[16];
+    cc[0] = 0;
+    if (got != NULL) {
+        jsize n = (*env)->GetArrayLength(env, got);
+        if (n > 0 && n + 1 < (jsize) sizeof(cc)) {
+            (*env)->GetByteArrayRegion(env, got, 0, n, (jbyte *) cc);
+            cc[n] = 0;
+        }
+        (*env)->DeleteLocalRef(env, got);
+    }
+    if (!((cc[0] >= 'A' && cc[0] <= 'z') && (cc[1] >= 'A' && cc[1] <= 'z') && cc[2] == 0)) cc[0] = 0;
+    for (char *p = cc; *p != 0; p++) if (*p >= 'a' && *p <= 'z') *p = (char) (*p - 32);
+    char answer[176];
+    int an = snprintf(answer, sizeof(answer), "%s;%s", ip, cc);
+    if (jurl != NULL) (*env)->DeleteLocalRef(env, jurl);
+    if (jkeys != NULL) (*env)->DeleteLocalRef(env, jkeys);
+    set_step(cc[0] != 0 ? "locate:ok" : "locate:no-cc");
+    if (an <= 0) return NULL;
+    jbyteArray out = (*env)->NewByteArray(env, an);
+    if (out != NULL) (*env)->SetByteArrayRegion(env, out, 0, an, (const jbyte *) answer);
+    return out;
+}
+
+
 /* ============================ explicit registration ============================
  * Every entry point used to be found by name: the JVM looked up
  * Java_ir_v2rayng_compose_core_NativeSec_vaultOpen in the dynamic symbol table, so a strings dump
@@ -7865,7 +7989,7 @@ int blobgate_register(JNIEnv *env);
 const char *sb(int idx);
 
 static int reg_sec(JNIEnv *env) {
-    /* 47 entry points, named by index: the name and the signature come out of the
+    /* 48 entry points, named by index: the name and the signature come out of the
      * same encrypted table as every other interface string, so the registration no longer reads as
      * an inventory of what this library can be asked to do. One RegisterNatives per method, because
      * sb() keeps six decoded strings alive at most and 46 rows would need twice that.
@@ -7875,14 +7999,14 @@ static int reg_sec(JNIEnv *env) {
         208, 209, 210, 211, 212, 213, 214, 215, 169, 216,
         217, 218, 219, 220, 221, 222, 223, 224, 225, 226,
         227, 228, 229, 230, 231, 232, 233, 234, 235, 236,
-        237, 238, 239, 240, 241, 242, 265,
+        237, 238, 239, 240, 241, 242, 265, 272,
     };
     static const short g_sec_sigs[] = {
         60, 243, 71, 244, 245, 6, 246, 245, 245, 60,
         105, 96, 6, 136, 60, 117, 6, 247, 248, 6,
         249, 250, 251, 51, 252, 253, 136, 60, 136, 136,
         60, 254, 60, 255, 256, 45, 136, 60, 257, 68,
-        258, 259, 105, 260, 254, 261, 254,
+        258, 259, 105, 260, 254, 261, 254, 247,
     };
     static const void *const g_sec_fns[] = {
         (void *) Java_ir_v2rayng_compose_core_NativeSec_selftest,
@@ -7932,6 +8056,7 @@ static int reg_sec(JNIEnv *env) {
         (void *) Java_ir_v2rayng_compose_core_NativeSec_payloadRowOfId,
         (void *) Java_ir_v2rayng_compose_core_NativeSec_tcpPingRow,
         (void *) Java_ir_v2rayng_compose_core_NativeSec_rowDrop,
+        (void *) Java_ir_v2rayng_compose_core_NativeSec_rowLocate,
     };
     jclass c = need_class(env, sb(43));
     if (c == NULL) { if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env); return 0; }

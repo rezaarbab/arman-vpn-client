@@ -649,6 +649,20 @@ class _SettingsPageState extends State<SettingsPage> {
             onChanged: (v) => s.update(autoPing: v),
           ),
         ),
+        // How often opening the list asks the worker for it. The first time is
+        // the default: a fresh install has nothing to show until something
+        // arrives, and after that a pull or the button is enough.
+        _Choice<int>(
+          icon: Icons.sync_rounded,
+          title: 'Update the list on entry',
+          value: s.syncOnEntry,
+          onChanged: (v) => s.update(syncOnEntry: v),
+          options: const [
+            (0, 'Never', null),
+            (1, 'The first time', null),
+            (2, 'Every time', null),
+          ],
+        ),
         if (Platform.isAndroid)
           ValueListenableBuilder(
             valueListenable: AndroidCore.showSpeed,

@@ -577,6 +577,23 @@ public final class NativeSec {
 
     private static native int rowDrop(String ids);
 
+    private static native byte[] rowLocate(int row);
+
+    /**
+     * Where a row's server is: its resolved address and that address's country, ";"-joined. One
+     * DNS answer and one page - no core - so a list of countries is seconds, not a queue of
+     * short-lived cores, and it works with the tunnel up or down.
+     */
+    public static String locate(int row) {
+        if (!READY || row < 0) return "";
+        try {
+            byte[] b = rowLocate(row);
+            return b == null ? "" : new String(b, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
     /**
      * Take the listed servers out of the store and out of the sealed copy, so a row the user
      * deleted is gone from the next start as well. [ids] are ';' separated admin ids - the only

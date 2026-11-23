@@ -97,6 +97,12 @@ class IrRowsBridge {
   static Future<String> flag(String id) async =>
       await _ch.invokeMethod<String>('irFlag', {'id': id}) ?? '';
 
+  /// Where this server is: "CC|address" when the lookup answered, "" when it
+  /// did not. A DNS answer and one page - no core - so it is the fast way to
+  /// a flag.
+  static Future<String> locate(String id) async =>
+      await _ch.invokeMethod<String>('irLocate', {'id': id}) ?? '';
+
   /// Each named row's last session: "ms|up|down".
   static Future<Map<String, String>> stats(List<String> ids) async {
     final m = await _ch.invokeMethod<Map>('irStats', {'ids': ids});

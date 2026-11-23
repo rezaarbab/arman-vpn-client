@@ -49,6 +49,47 @@ class _ServersPageState extends State<ServersPage> {
   /// a row that did not answer is not asked again every time the page opens.
   static final _asked = <String>{};
 
+  /// Whether the list has already been asked for the worker's answer in this
+  /// run - the "first time only" choice needs the memory.
+  static bool _syncedOnce = false;
+
+  /// "CC|address" for the rows whose own server was identified.
+  static final Map<String, String> _srv = <String, String>{};
+
+  /// Rows being identified right now.
+  final _locating = <String>{};
+
+  /// One row's server: where it is and what address that is. A DNS answer and
+  /// one page - no core - so it is fast and works with the tunnel up or down.
+  Future<void> _identify(String id) async {
+    if (!_alive || _locating.contains(id)) return;
+    setState(() => _locating.add(id));
+    try {
+      final seen = await IrRowsBridge.locate(id);
+      if (!_alive) return;
+      setState(() {
+        if (seen.isNotEmpty) {
+          _srv[id] = seen;
+          _cc[id] = seen.split('|').first.toLowerCase();
+        }
+        _locating.remove(id);
+      });
+    } catch (_) {
+      if (_alive) setState(() => _locating.remove(id));
+    }
+  }
+
+  /// Whether this row has a session to reset: a row that carried nothing has
+  /// no reset button, which is what makes the button mean something.
+  bool _hasTraffic(String id) {
+    if (_live['id'] == id && _live['on'] == 'true') return true;
+    final s = _stats[id];
+    if (s == null) return false;
+    final p = s.split('|');
+    if (p.length != 3) return false;
+    return (int.tryParse(p[1]) ?? 0) + (int.tryParse(p[2]) ?? 0) > 0;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -74,9 +115,14 @@ class _ServersPageState extends State<ServersPage> {
           IrRowsBridge.pick(id).catchError((Object _) {});
         }
         await cached;
-        // what the general settings allow: a country and a delay each cost a
-        // short-lived core, so the list does not ask for them behind the user's
-        // back when he turned that off
+        // how often opening the list asks the worker is the user's choice in
+        // General settings; the first time is the default because a fresh
+        // install has nothing to look at until something arrives
+        final mode = widget.settings.syncOnEntry;
+        if (mode == 2 || (mode == 1 && !_syncedOnce)) {
+          _syncedOnce = true;
+          unawaited(_update());
+        }
         if (widget.settings.autoFlags) _flagPass();
         if (widget.settings.autoPing && _ping.isEmpty) _pingAll();
       });
@@ -88,7 +134,7 @@ class _ServersPageState extends State<ServersPage> {
   /// The countries the store does not have, three rows at a time. A country is
   /// one short-lived core, so the old one-row-per-tick pass made the last row
   /// wait behind every other row on the list.
-  Future<void> _flagPass() async {
+  Future<void> _flagPass({bool force = false}) async {
     if (_flagging) return;
     _flagging = true;
     try {
@@ -102,7 +148,9 @@ class _ServersPageState extends State<ServersPage> {
         final chunk = <String>[];
         while (chunk.length < 3 && at < ids.length) {
           final id = ids[at++];
-          if (!_cc.containsKey(id) && !_asked.contains(id)) chunk.add(id);
+          if (_cc.containsKey(id)) continue;
+          if (!force && _asked.contains(id)) continue;
+          chunk.add(id);
         }
         if (chunk.isEmpty) continue;
         _asked.addAll(chunk);
@@ -184,7 +232,9 @@ class _ServersPageState extends State<ServersPage> {
       await _servers.refresh();
       if (!_alive) return;
       _loadStats();
-      _loadCached().then((_) => _flagPass());
+      _loadCached().then((_) {
+        if (widget.settings.autoFlags) _flagPass();
+      });
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -260,6 +310,7 @@ class _ServersPageState extends State<ServersPage> {
         _cc.remove(id);
         _stats.remove(id);
         _asked.remove(id);
+        _srv.remove(id);
       }
     });
   }
@@ -361,6 +412,10 @@ class _ServersPageState extends State<ServersPage> {
         e.sort((a, b) => key(a).compareTo(key(b)));
       }
     }
+    // The reset buttons appear where there is something to reset: a row that
+    // carried nothing does not need a button that would do nothing.
+    final anyTraffic = _live['on'] == 'true' || _stats.keys.any(_hasTraffic);
+
     // One control of the page's single bar: a row of 28dp boxes. Two bars of
     // buttons above the list cost the height of three servers.
     Widget btn(String tip, Widget icon, VoidCallback? onTap) => IconButton(
@@ -436,21 +491,27 @@ class _ServersPageState extends State<ServersPage> {
                   Icon(_sortPing ? Icons.sort_rounded : Icons.sort_outlined),
                   () => setState(() => _sortPing = !_sortPing),
                 ),
+                btn(
+                  'Identify the servers',
+                  const Icon(Icons.public_rounded),
+                  () => _flagPass(force: true),
+                ),
                 if (_dead.isNotEmpty)
                   btn(
                     'Remove ${_dead.length} that did not answer',
                     const Icon(Icons.delete_outline_rounded),
                     () => _remove(_dead),
                   ),
-                btn(
-                  'Reset all traffic',
-                  const Icon(Icons.cleaning_services_outlined),
-                  () async {
-                    await IrRowsBridge.statsResetAll();
-                    if (!_alive) return;
-                    setState(_stats.clear);
-                  },
-                ),
+                if (anyTraffic)
+                  btn(
+                    'Reset all traffic',
+                    const Icon(Icons.cleaning_services_outlined),
+                    () async {
+                      await IrRowsBridge.statsResetAll();
+                      if (!_alive) return;
+                      setState(_stats.clear);
+                    },
+                  ),
                 const Spacer(),
                 if (_servers.loading)
                   const SizedBox(
@@ -528,6 +589,18 @@ class _ServersPageState extends State<ServersPage> {
                               children: [
                                 Text(row.note.isEmpty ? row.id : row.note,
                                     maxLines: 1, overflow: TextOverflow.ellipsis),
+                                // the server's own address, once it was identified
+                                if (_srv[row.id] case final seen?)
+                                  Text(
+                                    seen.split('|').length > 1
+                                        ? seen.split('|')[1]
+                                        : '',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
                                 if (_lineFor(row.id) case final line?)
                                   Text(
                                     line,
@@ -541,20 +614,38 @@ class _ServersPageState extends State<ServersPage> {
                             ),
                           ),
                           IconButton(
-                            tooltip: 'Reset traffic',
+                            tooltip: 'Identify this server',
                             visualDensity: VisualDensity.compact,
                             padding: EdgeInsets.zero,
                             constraints:
                                 const BoxConstraints.tightFor(width: 26, height: 26),
                             iconSize: 15,
-                            icon: Icon(Icons.restart_alt_rounded,
-                                color: theme.colorScheme.onSurfaceVariant),
-                            onPressed: () async {
-                              await IrRowsBridge.statReset(row.id);
-                              if (!_alive) return;
-                              setState(() => _stats.remove(row.id));
-                            },
+                            icon: _locating.contains(row.id)
+                                ? const SizedBox(
+                                    width: 12,
+                                    height: 12,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : Icon(Icons.public_rounded,
+                                    color: theme.colorScheme.onSurfaceVariant),
+                            onPressed: () => _identify(row.id),
                           ),
+                          if (_hasTraffic(row.id))
+                            IconButton(
+                              tooltip: 'Reset traffic',
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              constraints:
+                                  const BoxConstraints.tightFor(width: 26, height: 26),
+                              iconSize: 15,
+                              icon: Icon(Icons.restart_alt_rounded,
+                                  color: theme.colorScheme.onSurfaceVariant),
+                              onPressed: () async {
+                                await IrRowsBridge.statReset(row.id);
+                                if (!_alive) return;
+                                setState(() => _stats.remove(row.id));
+                              },
+                            ),
                           // Every row can go by hand, not only a dead one: the
                           // ping's verdict is not always known, the wish is.
                           IconButton(
@@ -653,7 +744,7 @@ class _PingPill extends StatelessWidget {
     final theme = Theme.of(context);
     final dead = ms < 10;
     final color = dead
-        ? theme.colorScheme.outline
+        ? theme.colorScheme.error
         : ms < 150
             ? const Color(0xFF2E9E5B)
             : ms < 400
@@ -665,13 +756,30 @@ class _PingPill extends StatelessWidget {
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(9),
       ),
-      child: Text(
-        dead ? '—' : '$ms ms',
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
+      // a server that did not answer is said as a failure, not as a number:
+      // the old dash read like a delay that had simply not been taken
+      child: dead
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.error_outline_rounded, size: 12, color: color),
+                const SizedBox(width: 3),
+                Text(
+                  'dead',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            )
+          : Text(
+              '$ms ms',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
     );
   }
 }

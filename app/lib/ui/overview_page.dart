@@ -399,6 +399,7 @@ class _DesktopHome extends StatelessWidget {
               palette: p,
               name: status.selectionName,
               selection: status.selection,
+              showIp: showIp,
               onTap: onOpenServers,
             ),
       _HomeData(
@@ -1683,6 +1684,7 @@ class _PhoneHome extends StatelessWidget {
                                 palette: p,
                                 name: status.selectionName,
                                 selection: status.selection,
+                                showIp: showIp,
                                 onTap: onOpenServers,
                               ),
                       ),
@@ -1710,6 +1712,7 @@ class _PhoneHome extends StatelessWidget {
                         palette: p,
                         name: status.selectionName,
                         selection: status.selection,
+                        showIp: showIp,
                         onTap: onOpenServers,
                       ),
                 const SizedBox(height: 12),
@@ -2904,11 +2907,16 @@ class _OurPlaceCard extends StatefulWidget {
     required this.palette,
     required this.name,
     required this.selection,
+    required this.showIp,
     this.onTap,
   });
   final _HomePalette palette;
   final String name;
   final String selection;
+
+  /// General settings' "show the IP": the small line under the server is the
+  /// address, and this is whether the user wants it seen.
+  final bool showIp;
   final VoidCallback? onTap;
   @override
   State<_OurPlaceCard> createState() => _OurPlaceCardState();
@@ -3067,7 +3075,7 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
           Icon(Icons.chevron_right_rounded, color: p.muted),
             ],
           ),
-          _MyExit(muted: p.muted),
+          if (widget.showIp) _MyExit(muted: p.muted),
         ],
       ),
     );

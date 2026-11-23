@@ -325,7 +325,7 @@ class MainActivity : FlutterActivity() {
                 }
                 "irFlagOf" -> inAsk(result) {
                     val id = CoreService.picked(this)
-                    Flags.of(this, id).ifEmpty { Flags.probe(this, id) }
+                    Flags.of(this, id).ifEmpty { Flags.country(this, id) }
                 }
                 "irFlagsAll" -> result.success(Flags.all(this))
                 "irPing" -> inProbe(result) {
@@ -346,7 +346,12 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "irFlag" -> inProbe(result) {
-                    Flags.probe(this, call.argument<String>("id") ?: "")
+                    Flags.country(this, call.argument<String>("id") ?: "")
+                }
+                // "where is this server": the address lookup, which needs no core and so
+                // runs three rows at a time on the probe threads
+                "irLocate" -> inProbe(result) {
+                    Flags.locate(this, call.argument<String>("id") ?: "")
                 }
                 "irStats" -> inBackground(result) {
                     CoreService.statsFor(this, call.argument<List<String>>("ids") ?: emptyList())

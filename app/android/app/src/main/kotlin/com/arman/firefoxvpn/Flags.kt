@@ -92,6 +92,35 @@ object Flags {
     private fun rowOf(id: String): Int =
         if (id.isBlank()) -1 else runCatching { NativeSec.rowOf(id) }.getOrDefault(-1)
 
+    /**
+     * Where the server is, without a core: its resolved address and that address's country,
+     * read by the library. The country is kept under the row's id, which is what the list paints.
+     * "CC|address" when it knows, "" when it does not.
+     */
+    fun locate(context: Context, id: String): String {
+        if (id.isBlank()) return ""
+        val row = rowOf(id)
+        if (row < 0) return ""
+        val seen = NativeSec.locate(row).split(';')
+        val ip = seen.getOrNull(0).orEmpty().trim()
+        val cc = seen.getOrNull(1).orEmpty().trim().uppercase()
+        if (cc.length != 2) return ""
+        cache[id] = cc
+        prefs(context).edit().putString("cc_" + id.take(64), cc).apply()
+        return "$cc|$ip"
+    }
+
+    /**
+     * The row's country by whichever way answers: the address lookup first, because a DNS answer
+     * and a page are a fraction of what a core costs, and the trace page through a short-lived
+     * core when the lookup says nothing (a host behind a network that has no country of its own).
+     */
+    fun country(context: Context, id: String): String {
+        of(context, id).takeIf { it.isNotEmpty() }?.let { return it }
+        locate(context, id).takeIf { it.isNotEmpty() }?.let { return it.substringBefore('|') }
+        return probe(context, id)
+    }
+
     /** Milliseconds through the server itself; -1 when it does not answer. */
     fun delay(context: Context, id: String): Int {
         val row = rowOf(id)
@@ -103,10 +132,13 @@ object Flags {
         } else {
             readThrough(context, id, row).first
         }
-        // a refused answer is not a measurement: it must not overwrite the number an
-        // earlier round did learn
+        // a row that did not answer has no delay: the number an earlier round left here is
+        // what made a dead server look alive with a green figure beside it
+        val tail = id.take(64)
         if (ms >= 10) {
-            prefs(context).edit().putInt("pd_" + id.take(64), ms).apply()
+            prefs(context).edit().putInt("pd_$tail", ms).apply()
+        } else {
+            prefs(context).edit().remove("pd_$tail").apply()
         }
         return if (ms < 10) -1 else ms
     }

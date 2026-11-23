@@ -32,9 +32,10 @@ class AppSettings extends ChangeNotifier {
   /// This is derived locally for this run and is not saved as a preference.
   String? firstRunRegion;
 
-  /// Shows the public IP (the address websites see). Off by default: the
-  /// location is shown by its country either way.
-  bool showPublicIp = false;
+  /// Shows the public IP (the address websites see). On by default: it is the
+  /// one figure that says where this handset is standing, and the switch in
+  /// General is there to hide it.
+  bool showPublicIp = true;
 
   /// Android: the per-app mode switch on the home screen (all apps,
   /// selected apps, proxy). Off by default: most people never change it,
@@ -50,6 +51,11 @@ class AppSettings extends ChangeNotifier {
   /// Measures the delay of the rows the first time the list is opened, so the
   /// list arrives with its numbers. Off, only the buttons measure.
   bool autoPing = true;
+
+  /// How often opening the list asks the worker for it: 0 never, 1 the first
+  /// time only, 2 every time. First time is the default because a person who
+  /// just installed the app has nothing to look at until something arrives.
+  int syncOnEntry = 1;
 
   /// How a new account signs in (the accounts page's row).
   SignInMethod signInMethod = SignInMethod.api;
@@ -210,6 +216,8 @@ class AppSettings extends ChangeNotifier {
         s.showPublicIp = j['show_public_ip'] == true;
         s.autoFlags = j['auto_flags'] != false;
         s.autoPing = j['auto_ping'] != false;
+        final sync = j['sync_on_entry'];
+        s.syncOnEntry = sync is int && sync >= 0 && sync <= 2 ? sync : 1;
         s.showAppModeSwitch = false; // the quick mode switch is gone
         s.signInMethod =
             SignInMethod.values.asNameMap()[j['signin_method']] ??
@@ -266,6 +274,7 @@ class AppSettings extends ChangeNotifier {
     bool? showAppModeSwitch,
     bool? autoFlags,
     bool? autoPing,
+    int? syncOnEntry,
     DateTime? lowQuotaDismissedAt,
     String? dismissedUpdate,
     DateTime? updateCheckedAt,
@@ -292,6 +301,7 @@ class AppSettings extends ChangeNotifier {
     this.showAppModeSwitch = showAppModeSwitch ?? this.showAppModeSwitch;
     this.autoFlags = autoFlags ?? this.autoFlags;
     this.autoPing = autoPing ?? this.autoPing;
+    this.syncOnEntry = syncOnEntry ?? this.syncOnEntry;
     this.lowQuotaDismissedAt = lowQuotaDismissedAt ?? this.lowQuotaDismissedAt;
     this.dismissedUpdate = dismissedUpdate ?? this.dismissedUpdate;
     this.updateCheckedAt = updateCheckedAt ?? this.updateCheckedAt;
@@ -327,6 +337,7 @@ class AppSettings extends ChangeNotifier {
           'show_app_mode_switch': showAppModeSwitch,
           'auto_flags': autoFlags,
           'auto_ping': autoPing,
+          'sync_on_entry': syncOnEntry,
           'low_quota_dismissed_at': lowQuotaDismissedAt?.toIso8601String(),
           'dismissed_update': dismissedUpdate,
           'update_checked_at': updateCheckedAt?.toIso8601String(),
