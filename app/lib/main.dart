@@ -28,6 +28,7 @@ Future<void> main(List<String> args) async {
     executable: CoreProcess.executableFrom(args),
     dataDir: dataDir,
   );
+  AndroidCore.bootStamp(const String.fromEnvironment('APP_COMMIT', defaultValue: 'dev'));
   final core = CoreController(
     process.connect,
     moveStoppedCore: (port) async {

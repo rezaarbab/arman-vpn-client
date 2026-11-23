@@ -112,6 +112,10 @@ class AndroidCore {
     });
   }
 
+  /// One line in the app log naming the build that runs.
+  static Future<void> bootStamp(String stamp) async =>
+      await _ch.invokeMethod<void>('irBoot', {'stamp': stamp});
+
   /// The core's data folder inside the app's private storage.
   static Future<String> dataDir() async =>
       await _channel.invokeMethod<String>('dataDir') ?? '';

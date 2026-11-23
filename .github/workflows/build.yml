@@ -67,11 +67,11 @@ jobs:
           cd app
           flutter pub get
           mkdir -p ../out
-          flutter build apk --release --split-per-abi --dart-define=APP_VERSION=$v
+          flutter build apk --release --split-per-abi --dart-define=APP_VERSION=$v --dart-define=APP_COMMIT=${GITHUB_SHA::7}
           for abi in arm64-v8a armeabi-v7a x86_64; do
             cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "../out/Arman-VPN-Android-$abi.apk"
           done
-          flutter build apk --release --dart-define=APP_VERSION=$v
+          flutter build apk --release --dart-define=APP_VERSION=$v --dart-define=APP_COMMIT=${GITHUB_SHA::7}
           cp build/app/outputs/flutter-apk/app-release.apk ../out/Arman-VPN-Android-universal.apk
           # One zip with the per-ABI APKs, for handing a phone the right file.
           (cd ../out && zip -9 -q Arman-VPN-Android-apks.zip \

@@ -294,6 +294,10 @@ class MainActivity : FlutterActivity() {
                     CoreService.resetTotal(this)
                     result.success(null)
                 }
+                "irBoot" -> {
+                    CoreService.log("build " + (call.argument<String>("stamp") ?: "?"))
+                    result.success(null)
+                }
                 "irStatsResetAll" -> {
                     CoreService.resetAllStats(this)
                     result.success(null)
