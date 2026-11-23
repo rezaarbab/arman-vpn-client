@@ -62,9 +62,10 @@ jobs:
           # A compiler error's text is only in the run log; the lines that
           # name one are repeated as annotations here.
           set +e
-          {
+          # The build as one thing that can be asked twice.
+          do_build() {
           v="$(awk -F'[ .+]' '/^version:/ {print $2"."$3"."$4; exit}' app/pubspec.yaml)"
-          cd app
+          ( cd app
           flutter pub get
           mkdir -p ../out
           flutter build apk --release --split-per-abi --dart-define=APP_VERSION=$v --dart-define=APP_COMMIT=${GITHUB_SHA::7}
@@ -74,12 +75,24 @@ jobs:
           flutter build apk --release --dart-define=APP_VERSION=$v --dart-define=APP_COMMIT=${GITHUB_SHA::7}
           cp build/app/outputs/flutter-apk/app-release.apk ../out/Blob-VPN-Android-universal.apk
           # One zip with the per-ABI APKs, for handing a phone the right file.
-          (cd ../out && zip -9 -q Blob-VPN-Android-apks.zip \
+          ( cd ../out && zip -9 -q Blob-VPN-Android-apks.zip \
             Blob-VPN-Android-arm64-v8a.apk \
             Blob-VPN-Android-armeabi-v7a.apk \
             Blob-VPN-Android-x86_64.apk)
-          } 2>&1 | tee build.log
+          )
+          }
+          do_build 2>&1 | tee build.log
           status=${PIPESTATUS[0]}
+          # ':gradle' refusing to configure is this runner's own flake: it names no
+          # file and no line of ours, and it has cost a finished build before. It
+          # is asked once more, and only when that refusal is all the log says.
+          if [ "$status" -ne 0 ] && grep -q "configuring project ':gradle'" build.log \
+             && ! grep -qE '^e: |^error:|Error: |^lib/|^test/' build.log; then
+            echo "::notice::':gradle' would not configure; building once more"
+            rm -f build.log
+            do_build 2>&1 | tee build.log
+            status=${PIPESTATUS[0]}
+          fi
           grep -E '^(e: |w: )|error:|Error: |^FAILURE: |^> Task .* FAILED|^Execution failed|Caused by:|^> |^lib/|^test/' build.log \
             | head -80 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::$line"; done
           # R8 and the packaging steps name their failure in a block no single
