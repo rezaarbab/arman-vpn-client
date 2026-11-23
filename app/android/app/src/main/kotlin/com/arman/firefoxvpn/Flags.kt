@@ -50,7 +50,10 @@ object Flags {
             val t0 = System.nanoTime()
             val loc = NativeSec.probe("https://www.cloudflare.com/cdn-cgi/trace", "loc", port)
             if (loc.length == 2) {
-                val ms = ((System.nanoTime() - t0) / 1000000L).toInt()
+                val raw = ((System.nanoTime() - t0) / 1000000L).toInt()
+                // a round trip through a remote server is never 1 ms: that is a local
+                // answer and would paint a dead row green
+                val ms = if (raw < 10) -1 else raw
                 context.getSharedPreferences("blob_core", Context.MODE_PRIVATE)
                     .edit().putInt("pd_" + id.take(64), ms).apply()
                 ms
@@ -60,6 +63,55 @@ object Flags {
         } finally {
             runCatching { NativeSec.probeStop(handle) }
         }
+    }
+
+    /** Everything already measured, id -> ms. */
+    fun allDelays(context: Context): Map<String, Int> {
+        val out = HashMap<String, Int>()
+        for ((k, v) in context.getSharedPreferences("blob_core", Context.MODE_PRIVATE).all) {
+            if (k.startsWith("pd_") && v is Int && v > 0) out[k.removePrefix("pd_")] = v
+        }
+        return out
+    }
+
+    /** The picked row's own answers: delay, exit country and exit IP. */
+    fun info(context: Context, id: String): Map<String, Any?> {
+        val p = context.getSharedPreferences("blob_core", Context.MODE_PRIVATE)
+        val out = HashMap<String, Any?>()
+        out["ms"] = delay(context, id)
+        out["cc"] = p.getString("cc_" + id.take(64), "") ?: ""
+        out["ip"] = p.getString("pi_" + id.take(64), "") ?: ""
+        if (CoreService.on || id.isBlank()) return out
+        val row = runCatching { NativeSec.rowOf(id) }.getOrDefault(-1)
+        if (row < 0) return out
+        val port = 20000 + Random.nextInt(2000)
+        val quiet = object : CoreCallbackHandler {
+            override fun startup(): Long = 0L
+            override fun shutdown(): Long = 0L
+            override fun onEmitStatus(p0: Long, p1: String?): Long = 0L
+        }
+        val handle = runCatching { NativeSec.probeStart(row, port, quiet) }.getOrDefault(0)
+        if (handle == 0) return out
+        try {
+            val trace = NativeSec.probe("https://www.cloudflare.com/cdn-cgi/trace", "loc,ip", port)
+            var cc = ""
+            var ip = ""
+            for (line in trace.split('\n')) {
+                if (line.startsWith("loc=")) cc = line.removePrefix("loc=").trim().uppercase()
+                if (line.startsWith("ip=")) ip = line.removePrefix("ip=").trim()
+            }
+            if (cc.length == 2) {
+                p.edit().putString("cc_" + id.take(64), cc).apply()
+                out["cc"] = cc
+            }
+            if (ip.length in 7..45) {
+                p.edit().putString("pi_" + id.take(64), ip).apply()
+                out["ip"] = ip
+            }
+        } finally {
+            runCatching { NativeSec.probeStop(handle) }
+        }
+        return out
     }
 
     fun probe(context: Context, id: String): String {

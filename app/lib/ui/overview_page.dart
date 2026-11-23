@@ -2916,6 +2916,7 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
   String _cc = '';
   String _for = '';
   int _ping = -1;
+  String _ip = '';
   Timer? _retry;
   @override
   void initState() {
@@ -2943,12 +2944,14 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
     _for = id;
     if (id.isEmpty) return;
     try {
-      final cc = await IrRowsBridge.flagOf();
-      final ms = await IrRowsBridge.pickPing();
+      final info = await IrRowsBridge.pickInfo();
       if (mounted && _for == id) {
         setState(() {
-          if (cc.length == 2) _cc = cc.toLowerCase();
-          _ping = ms;
+          final cc = (info['cc'] ?? '').toLowerCase();
+          if (cc.length == 2) _cc = cc;
+          final ms = int.tryParse(info['ms'] ?? '') ?? -1;
+          _ping = ms < 10 ? -1 : ms;
+          _ip = info['ip'] ?? '';
         });
       }
     } catch (_) {}
@@ -2998,6 +3001,14 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
               ],
             ),
           ),
+          if (_ip.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Text(
+                _ip,
+                style: theme.textTheme.labelSmall?.copyWith(color: p.muted),
+              ),
+            ),
           IconButton(
             tooltip: 'Refresh',
             visualDensity: VisualDensity.compact,

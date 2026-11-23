@@ -68,7 +68,7 @@ class _ServersPageState extends State<ServersPage> {
       });
       _loadCached();
       _loadStats();
-      _pingAll();
+      _loadPings();
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _pollLive());
       // country flags: one row at a time, only while the tunnel is down
       _flags = Timer.periodic(const Duration(milliseconds: 400), (_) => _probeNext());
@@ -117,6 +117,13 @@ class _ServersPageState extends State<ServersPage> {
     if (!_alive) return;
     if (cc.length == 2) setState(() => _cc[id] = cc.toLowerCase());
     _probeAt++;
+  }
+
+  Future<void> _loadPings() async {
+    try {
+      final m = await IrRowsBridge.pingsAll();
+      if (_alive && m.isNotEmpty) setState(() => _ping = {...m, ..._ping});
+    } catch (_) {}
   }
 
   /// What an earlier visit already learned: flags and sessions show at once,

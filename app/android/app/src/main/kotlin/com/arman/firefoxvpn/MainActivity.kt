@@ -299,6 +299,10 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "irPickPing" -> result.success(CoreService.lastDelay(this, CoreService.picked(this)))
+                "irPingsAll" -> result.success(Flags.allDelays(this))
+                "irPickInfo" -> inBackground(result) {
+                    Flags.info(this, CoreService.picked(this))
+                }
                 "irFlagOf" -> inBackground(result) {
                     val id = CoreService.picked(this)
                     Flags.of(this, id).ifEmpty { Flags.probe(this, id) }

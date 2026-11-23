@@ -286,7 +286,7 @@ class _SettingsListState extends State<_SettingsList> {
         row(
           Icons.alt_route_rounded,
           l.sectionRouting,
-          () => push(l.sectionRouting, () => BypassAppsPage()),
+          () => push('Per-app', () => BypassAppsPage()),
         ),
       ]),
       ?group(l.groupApp, [
