@@ -294,6 +294,11 @@ class MainActivity : FlutterActivity() {
                     CoreService.resetTotal(this)
                     result.success(null)
                 }
+                "irStatsResetAll" -> {
+                    CoreService.resetAllStats(this)
+                    result.success(null)
+                }
+                "irPickPing" -> result.success(CoreService.lastDelay(this, CoreService.picked(this)))
                 "irFlagOf" -> inBackground(result) {
                     val id = CoreService.picked(this)
                     Flags.of(this, id).ifEmpty { Flags.probe(this, id) }

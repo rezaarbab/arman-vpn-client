@@ -248,14 +248,18 @@ class _ServersPageState extends State<ServersPage> {
               IconButton(
                 tooltip: 'Ping all',
                 visualDensity: VisualDensity.compact,
-                iconSize: 20,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+                iconSize: 18,
                 icon: const Icon(Icons.bolt_rounded),
                 onPressed: _pingAll,
               ),
               IconButton(
                 tooltip: 'Update the list',
                 visualDensity: VisualDensity.compact,
-                iconSize: 20,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+                iconSize: 18,
                 icon: _busy
                     ? const SizedBox(
                         width: 18,
@@ -268,7 +272,9 @@ class _ServersPageState extends State<ServersPage> {
               IconButton(
                 tooltip: 'Sort by ping',
                 visualDensity: VisualDensity.compact,
-                iconSize: 20,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+                iconSize: 18,
                 icon: Icon(_sortPing ? Icons.sort_rounded : Icons.sort_outlined),
                 onPressed: () => setState(() => _sortPing = !_sortPing),
               ),
@@ -276,6 +282,19 @@ class _ServersPageState extends State<ServersPage> {
           ),
           Row(
             children: [
+              IconButton(
+                tooltip: 'Reset all traffic',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+                iconSize: 18,
+                icon: const Icon(Icons.cleaning_services_outlined),
+                onPressed: () async {
+                  await IrRowsBridge.statsResetAll();
+                  if (!_alive) return;
+                  setState(() => _stats = const {});
+                },
+              ),
               const Spacer(),
               if (_servers.loading)
                 const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
@@ -345,18 +364,8 @@ class _ServersPageState extends State<ServersPage> {
                         children: [
                           if (_ping[row.id] != null)
                             Padding(
-                              padding: const EdgeInsets.only(right: 4),
-                              child: Text(
-                                _ping[row.id]! < 0
-                                    ? '—'
-                                    : '${_ping[row.id]} ms',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: _ping[row.id]! < 0
-                                      ? theme.colorScheme.outline
-                                      : theme.colorScheme.primary,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
+                              padding: const EdgeInsets.only(right: 6),
+                              child: _PingPill(ms: _ping[row.id]!),
                             ),
                           if (_live[row.id] == null && _stats[row.id] != null)
                             IconButton(
@@ -412,3 +421,35 @@ const _countryNames = <String, String>{
   'ie': 'Ireland', 'hr': 'Croatia', 'rs': 'Serbia', 'sk': 'Slovakia',
   'si': 'Slovenia', 'al': 'Albania', 'mk': 'North Macedonia', 'ba': 'Bosnia',
 };
+
+
+class _PingPill extends StatelessWidget {
+  const _PingPill({required this.ms});
+  final int ms;
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dead = ms < 0;
+    final color = dead
+        ? theme.colorScheme.outline
+        : ms < 150
+            ? const Color(0xFF2E9E5B)
+            : ms < 400
+                ? const Color(0xFFB07B12)
+                : const Color(0xFFC0553F);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Text(
+        dead ? '—' : '$ms ms',
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}

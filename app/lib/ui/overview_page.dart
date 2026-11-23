@@ -2915,6 +2915,7 @@ class _OurPlaceCard extends StatefulWidget {
 class _OurPlaceCardState extends State<_OurPlaceCard> {
   String _cc = '';
   String _for = '';
+  int _ping = -1;
   Timer? _retry;
   @override
   void initState() {
@@ -2943,8 +2944,12 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
     if (id.isEmpty) return;
     try {
       final cc = await IrRowsBridge.flagOf();
-      if (mounted && _for == id && cc.length == 2) {
-        setState(() => _cc = cc.toLowerCase());
+      final ms = await IrRowsBridge.pickPing();
+      if (mounted && _for == id) {
+        setState(() {
+          if (cc.length == 2) _cc = cc.toLowerCase();
+          _ping = ms;
+        });
       }
     } catch (_) {}
   }
@@ -2993,6 +2998,30 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
               ],
             ),
           ),
+          if (_ping >= 0)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: (_ping < 150
+                        ? const Color(0xFF2E9E5B)
+                        : _ping < 400
+                            ? const Color(0xFFB07B12)
+                            : const Color(0xFFC0553F))
+                    .withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Text(
+                '$_ping ms',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: _ping < 150
+                      ? const Color(0xFF2E9E5B)
+                      : _ping < 400
+                          ? const Color(0xFFB07B12)
+                          : const Color(0xFFC0553F),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
           Icon(Icons.chevron_right_rounded, color: p.muted),
         ],
       ),

@@ -378,6 +378,17 @@ class CoreService : VpnService() {
             )
         }
 
+        fun resetAllStats(context: Context) {
+            val p = prefs(context)
+            val e = p.edit()
+            for (k in p.all.keys) if (k.startsWith("stats_")) e.remove(k)
+            e.putLong("tot_up", 0L).putLong("tot_down", 0L).apply()
+            log("all traffic reset")
+        }
+
+        fun lastDelay(context: Context, id: String): Int =
+            if (id.isBlank()) -1 else prefs(context).getInt("pd_" + id.take(64), -1)
+
         fun resetTotal(context: Context) {
             prefs(context).edit().putLong("tot_up", 0L).putLong("tot_down", 0L).apply()
             log("traffic total reset")

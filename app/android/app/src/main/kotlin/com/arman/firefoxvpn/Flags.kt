@@ -49,7 +49,14 @@ object Flags {
         return try {
             val t0 = System.nanoTime()
             val loc = NativeSec.probe("https://www.cloudflare.com/cdn-cgi/trace", "loc", port)
-            if (loc.length == 2) ((System.nanoTime() - t0) / 1000000L).toInt() else -1
+            if (loc.length == 2) {
+                val ms = ((System.nanoTime() - t0) / 1000000L).toInt()
+                context.getSharedPreferences("blob_core", Context.MODE_PRIVATE)
+                    .edit().putInt("pd_" + id.take(64), ms).apply()
+                ms
+            } else {
+                -1
+            }
         } finally {
             runCatching { NativeSec.probeStop(handle) }
         }

@@ -63,6 +63,12 @@ class IrRowsBridge {
     return {for (final e in (m ?? {}).entries) '${e.key}': '${e.value}'};
   }
 
+  static Future<void> statsResetAll() async =>
+      await _ch.invokeMethod<void>('irStatsResetAll');
+
+  static Future<int> pickPing() async =>
+      await _ch.invokeMethod<int>('irPickPing') ?? -1;
+
   static Future<String> flagOf() async =>
       await _ch.invokeMethod<String>('irFlagOf') ?? '';
 
