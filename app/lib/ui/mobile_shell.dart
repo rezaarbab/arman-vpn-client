@@ -8,7 +8,6 @@ import '../core/core_controller.dart';
 import '../l10n/app_localizations.dart';
 import 'about_page.dart';
 import 'format.dart';
-import 'announcement_panel.dart';
 import 'bypass_apps_page.dart';
 import 'logs_page.dart';
 import 'overview_page.dart';
@@ -143,16 +142,11 @@ class _MobileShellState extends State<MobileShell> {
         body: SafeArea(
           // The home page's hero reaches under the status bar.
           top: _tab != 0 || widget.noCore != null || widget.banner != null,
-          child: AnnouncementOverlay(
-            settings: settings,
-            onOpenUpdates: () =>
-                _push(l.checkUpdates, () => AboutPage(core: core)),
-            child: Column(
-              children: [
-                ?widget.banner,
-                Expanded(child: page),
-              ],
-            ),
+          child: Column(
+            children: [
+              ?widget.banner,
+              Expanded(child: page),
+            ],
           ),
         ),
         bottomNavigationBar: _themed(

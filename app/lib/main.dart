@@ -99,6 +99,8 @@ Future<void> runAndroid() async {
     onShow: () => core.onScreen = true,
     onHide: () => core.onScreen = false,
   );
-  Updates.start(core, settings);
+  // No update check on Android: the phone's build comes from wherever the
+  // user got the APK, and a manifest of someone else's releases has no business
+  // offering this app a file to install.
   runApp(VpnApp(core: core, settings: settings));
 }
