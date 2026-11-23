@@ -2998,6 +2998,15 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
               ],
             ),
           ),
+          IconButton(
+            tooltip: 'Refresh',
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+            iconSize: 16,
+            icon: Icon(Icons.refresh_rounded, color: p.muted),
+            onPressed: _load,
+          ),
           if (_ping >= 0)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),

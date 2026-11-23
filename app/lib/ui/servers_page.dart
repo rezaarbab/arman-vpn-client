@@ -31,6 +31,8 @@ class _ServersPageState extends State<ServersPage> {
   Map<String, int> _ping = const {};
   bool _sortPing = false;
   bool _busy = false;
+  bool _searchOpen = false;
+  bool _pinging = false;
 
   /// The tunnel as the list shows it, refreshed once a second while the page
   /// is open; only a change redraws.
@@ -75,7 +77,8 @@ class _ServersPageState extends State<ServersPage> {
 
   /// A real connect timed in C, a batch at a time so the list fills as it goes.
   Future<void> _pingAll() async {
-    if (!_alive) return;
+    if (!_alive || _pinging) return;
+    setState(() => _pinging = true);
     final ids = [for (final r in _servers.rows.take(48)) r.id];
     for (var i = 0; i < ids.length; i += 12) {
       if (!_alive) return;
@@ -87,6 +90,7 @@ class _ServersPageState extends State<ServersPage> {
         setState(() => _ping = {..._ping, ...m});
       } catch (_) {}
     }
+    if (mounted) setState(() => _pinging = false);
   }
 
   /// The button: ask the worker now, keep everything else as it was.
@@ -234,24 +238,53 @@ class _ServersPageState extends State<ServersPage> {
         children: [
           Row(
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _search,
-                  onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    hintText: 'Search name or country code',
-                    prefixIcon: Icon(Icons.search_rounded, size: 18),
+              if (_searchOpen)
+                Expanded(
+                  child: TextField(
+                    controller: _search,
+                    autofocus: true,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: 'Search name or country',
+                      prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                      suffixIcon: IconButton(
+                        iconSize: 16,
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => setState(() {
+                          _searchOpen = false;
+                          _search.clear();
+                        }),
+                      ),
+                    ),
                   ),
+                )
+              else ...[
+                IconButton(
+                  tooltip: 'Search',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(width: 30, height: 30),
+                  iconSize: 18,
+                  icon: const Icon(Icons.search_rounded),
+                  onPressed: () => setState(() => _searchOpen = true),
                 ),
-              ),
+                const Spacer(),
+              ],
               IconButton(
                 tooltip: 'Ping all',
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints.tightFor(width: 30, height: 30),
                 iconSize: 18,
-                icon: const Icon(Icons.bolt_rounded),
+                icon: _pinging
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.bolt_rounded),
                 onPressed: _pingAll,
               ),
               IconButton(

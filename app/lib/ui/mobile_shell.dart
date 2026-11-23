@@ -9,6 +9,7 @@ import '../l10n/app_localizations.dart';
 import 'about_page.dart';
 import 'format.dart';
 import 'announcement_panel.dart';
+import 'bypass_apps_page.dart';
 import 'logs_page.dart';
 import 'overview_page.dart';
 import 'servers_page.dart';
@@ -282,10 +283,10 @@ class _SettingsListState extends State<_SettingsList> {
           l.sectionGeneral,
         ),
         row(Icons.public_rounded, l.navServers, onOpenServers),
-        section(
-          SettingsSection.routing,
+        row(
           Icons.alt_route_rounded,
           l.sectionRouting,
+          () => push(l.sectionRouting, () => BypassAppsPage()),
         ),
       ]),
       ?group(l.groupApp, [

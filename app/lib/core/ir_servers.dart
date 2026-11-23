@@ -48,7 +48,9 @@ class IrServers extends ChangeNotifier {
     _notify();
     try {
       final raw = await IrRowsBridge.all();
-      rows = raw.map(IrServer.fromMap).where((r) => r.id.isNotEmpty).toList(growable: false);
+      final fresh = raw.map(IrServer.fromMap).where((r) => r.id.isNotEmpty).toList(growable: false);
+      // a sync that lands with fewer rows must not blank the phone's list
+      if (fresh.isNotEmpty || rows.isEmpty) rows = fresh;
       error = null;
     } catch (e) {
       error = '$e';
@@ -64,7 +66,8 @@ class IrServers extends ChangeNotifier {
     try {
       final code = await IrRowsBridge.refresh();
       final raw = await IrRowsBridge.all();
-      rows = raw.map(IrServer.fromMap).where((r) => r.id.isNotEmpty).toList(growable: false);
+      final fresh = raw.map(IrServer.fromMap).where((r) => r.id.isNotEmpty).toList(growable: false);
+      if (fresh.isNotEmpty || rows.isEmpty) rows = fresh;
       if (code < 0) {
         final why = await IrRowsBridge.why();
         error = why.isEmpty ? 'refresh failed' : why;
