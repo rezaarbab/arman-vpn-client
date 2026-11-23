@@ -74,7 +74,11 @@ class _ServersPageState extends State<ServersPage> {
           IrRowsBridge.pick(id).catchError((Object _) {});
         }
         await cached;
-        _flagPass();
+        // what the general settings allow: a country and a delay each cost a
+        // short-lived core, so the list does not ask for them behind the user's
+        // back when he turned that off
+        if (widget.settings.autoFlags) _flagPass();
+        if (widget.settings.autoPing && _ping.isEmpty) _pingAll();
       });
       _loadPings();
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _pollLive());
@@ -91,7 +95,10 @@ class _ServersPageState extends State<ServersPage> {
       var at = 0;
       final ids = [for (final r in _servers.rows.take(200)) r.id];
       while (at < ids.length) {
-        if (!_alive || _live['on'] == 'true') return;
+        // A country is asked for with the tunnel up as well: the probe core has
+        // its own local port and this app's sockets are outside the VPN by
+        // choice, so the flags do not stop coming just because one is on.
+        if (!_alive) return;
         final chunk = <String>[];
         while (chunk.length < 3 && at < ids.length) {
           final id = ids[at++];
@@ -124,24 +131,49 @@ class _ServersPageState extends State<ServersPage> {
       if (!_alive) return;
       // three calls at once, on the three probe threads; each does a few rows
       final runs = <Future<Map<String, int>>>[];
+      final parts = <List<String>>[];
       for (var k = 0; k < 3; k++) {
         final start = i + k * 4;
         if (start >= ids.length) break;
         final end = start + 4 > ids.length ? ids.length : start + 4;
-        runs.add(IrRowsBridge.ping(ids.sublist(start, end)));
+        parts.add(ids.sublist(start, end));
+        runs.add(IrRowsBridge.ping(parts.last));
       }
-      for (final r in runs) {
+      setState(() => _busyIds.addAll(parts.expand((p) => p)));
+      for (var j = 0; j < runs.length; j++) {
         try {
-          final m = await r;
+          final m = await runs[j];
           if (!_alive) return;
           setState(() => _ping.addAll(m));
         } catch (_) {}
+        // the mark goes away as that group's number arrives, so the list fills
+        // row by row instead of all at once at the end
+        if (_alive) setState(() => _busyIds.removeAll(parts[j]));
       }
     }
     // The ping round carried the country and the exit IP with it: read them
     // out of the store so the flags arrive with the numbers, not after them.
     if (_alive) _loadCached();
     if (mounted) setState(() => _pinging = false);
+  }
+
+  /// Rows whose delay is being measured right now, so the number that is on
+  /// its way shows as on its way.
+  final _busyIds = <String>{};
+
+  /// One row's delay, asked by its own button. The same round trip carries the
+  /// country and the exit address, so this fills the flag too.
+  Future<void> _pingOne(String id) async {
+    if (!_alive || _busyIds.contains(id)) return;
+    setState(() => _busyIds.add(id));
+    try {
+      final m = await IrRowsBridge.ping([id]);
+      if (_alive) setState(() => _ping.addAll(m));
+      await _loadCached();
+    } catch (_) {
+    } finally {
+      if (_alive) setState(() => _busyIds.remove(id));
+    }
   }
 
   /// The button: ask the worker now, keep everything else as it was.
@@ -285,14 +317,16 @@ class _ServersPageState extends State<ServersPage> {
   }
 
   static String _bytes(int b) {
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    // one letter, no space: "1.2 MB" is long enough to push the line under the
+    // name onto a second row, and the row's height is the list's cost
+    const units = ['B', 'K', 'M', 'G', 'T'];
     var v = b.toDouble();
     var i = 0;
     while (v >= 1024 && i < units.length - 1) {
       v /= 1024;
       i++;
     }
-    return i == 0 ? '$b ${units[0]}' : '${v.toStringAsFixed(1)} ${units[i]}';
+    return i == 0 ? '$b${units[0]}' : '${v.toStringAsFixed(1)}${units[i]}';
   }
 
   @override
@@ -464,62 +498,108 @@ class _ServersPageState extends State<ServersPage> {
                   for (final row in entry.value)
                     ListTile(
                       dense: true,
-                      leading: _cc[row.id] == null
-                          ? null
-                          : ClipRRect(
-                              borderRadius: BorderRadius.circular(7),
-                              child: SvgPicture.asset(
-                              'assets/flags/${_cc[row.id]}.svg',
-                              width: 40,
-                              height: 28,
-                            )),
-                      title: Text(row.name),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(row.note.isEmpty ? row.id : row.note),
-                          if (_lineFor(row.id) case final line?)
-                            Text(
-                              line,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
+                      // The flag's slot is there before the flag is: a list
+                      // whose names shift sideways as countries arrive is the
+                      // same list jumping under a finger.
+                      leading: SizedBox(
+                        width: 40,
+                        height: 28,
+                        child: _cc[row.id] == null
+                            ? const SizedBox.shrink()
+                            : ClipRRect(
+                                borderRadius: BorderRadius.circular(7),
+                                child: SvgPicture.asset(
+                                  'assets/flags/${_cc[row.id]}.svg',
+                                  width: 40,
+                                  height: 28,
+                                ),
                               ),
-                            ),
-                        ],
                       ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      title: Text(row.name,
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      // The two housekeeping buttons ride the text line, not
+                      // the end: the end carries the delay, and four icons
+                      // there is what pushed the words onto a second row.
+                      subtitle: Row(
                         children: [
-                          if (_ping[row.id] != null)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: _PingPill(ms: _ping[row.id]!),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(row.note.isEmpty ? row.id : row.note,
+                                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                                if (_lineFor(row.id) case final line?)
+                                  Text(
+                                    line,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                              ],
                             ),
-                          if (_live[row.id] == null && _stats[row.id] != null)
-                            IconButton(
-                              tooltip: 'Reset traffic',
-                              visualDensity: VisualDensity.compact,
-                              icon: Icon(Icons.restart_alt_rounded,
-                                  size: 18, color: theme.colorScheme.onSurfaceVariant),
-                              onPressed: () async {
-                                await IrRowsBridge.statReset(row.id);
-                                if (!_alive) return;
-                                setState(() => _stats.remove(row.id));
-                              },
-                            ),
-                          if (_picked == row.id) const Icon(Icons.check),
+                          ),
+                          IconButton(
+                            tooltip: 'Reset traffic',
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints:
+                                const BoxConstraints.tightFor(width: 26, height: 26),
+                            iconSize: 15,
+                            icon: Icon(Icons.restart_alt_rounded,
+                                color: theme.colorScheme.onSurfaceVariant),
+                            onPressed: () async {
+                              await IrRowsBridge.statReset(row.id);
+                              if (!_alive) return;
+                              setState(() => _stats.remove(row.id));
+                            },
+                          ),
                           // Every row can go by hand, not only a dead one: the
                           // ping's verdict is not always known, the wish is.
                           IconButton(
                             tooltip: 'Remove',
                             visualDensity: VisualDensity.compact,
                             padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints.tightFor(width: 26, height: 26),
-                            iconSize: 16,
+                            constraints:
+                                const BoxConstraints.tightFor(width: 26, height: 26),
+                            iconSize: 15,
                             icon: Icon(Icons.close_rounded,
                                 color: theme.colorScheme.onSurfaceVariant),
                             onPressed: () => _remove([row.id]),
                           ),
+                        ],
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_busyIds.contains(row.id))
+                            const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else if (_ping[row.id] case final ms?)
+                            Tooltip(
+                              message: 'Ping this server again',
+                              child: InkWell(
+                                onTap: () => _pingOne(row.id),
+                                child: _PingPill(ms: ms),
+                              ),
+                            )
+                          else
+                            IconButton(
+                              tooltip: 'Ping this server',
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              constraints:
+                                  const BoxConstraints.tightFor(width: 26, height: 26),
+                              iconSize: 16,
+                              icon: Icon(Icons.bolt_rounded,
+                                  color: theme.colorScheme.onSurfaceVariant),
+                              onPressed: () => _pingOne(row.id),
+                            ),
+                          if (_picked == row.id) const Icon(Icons.check),
                         ],
                       ),
                       onTap: () {

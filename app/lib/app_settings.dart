@@ -41,6 +41,16 @@ class AppSettings extends ChangeNotifier {
   /// and it takes the room the location and quota cards want.
   bool showAppModeSwitch = false;
 
+  /// Asks a row's country without being asked. A country costs a short-lived
+  /// core, which is the most expensive thing this app does by itself, so the
+  /// list's flags are the user's choice; the row's own button still works when
+  /// this is off.
+  bool autoFlags = true;
+
+  /// Measures the delay of the rows the first time the list is opened, so the
+  /// list arrives with its numbers. Off, only the buttons measure.
+  bool autoPing = true;
+
   /// How a new account signs in (the accounts page's row).
   SignInMethod signInMethod = SignInMethod.api;
 
@@ -198,6 +208,8 @@ class AppSettings extends ChangeNotifier {
             CloseAction.values.asNameMap()[j['close']] ?? CloseAction.ask;
         s.firstRun = j['welcome_done'] != true;
         s.showPublicIp = j['show_public_ip'] == true;
+        s.autoFlags = j['auto_flags'] != false;
+        s.autoPing = j['auto_ping'] != false;
         s.showAppModeSwitch = false; // the quick mode switch is gone
         s.signInMethod =
             SignInMethod.values.asNameMap()[j['signin_method']] ??
@@ -252,6 +264,8 @@ class AppSettings extends ChangeNotifier {
     bool? firstRun,
     bool? showPublicIp,
     bool? showAppModeSwitch,
+    bool? autoFlags,
+    bool? autoPing,
     DateTime? lowQuotaDismissedAt,
     String? dismissedUpdate,
     DateTime? updateCheckedAt,
@@ -276,6 +290,8 @@ class AppSettings extends ChangeNotifier {
     this.autoConnect = autoConnect ?? this.autoConnect;
     this.showPublicIp = showPublicIp ?? this.showPublicIp;
     this.showAppModeSwitch = showAppModeSwitch ?? this.showAppModeSwitch;
+    this.autoFlags = autoFlags ?? this.autoFlags;
+    this.autoPing = autoPing ?? this.autoPing;
     this.lowQuotaDismissedAt = lowQuotaDismissedAt ?? this.lowQuotaDismissedAt;
     this.dismissedUpdate = dismissedUpdate ?? this.dismissedUpdate;
     this.updateCheckedAt = updateCheckedAt ?? this.updateCheckedAt;
@@ -309,6 +325,8 @@ class AppSettings extends ChangeNotifier {
           'welcome_done': !firstRun,
           'show_public_ip': showPublicIp,
           'show_app_mode_switch': showAppModeSwitch,
+          'auto_flags': autoFlags,
+          'auto_ping': autoPing,
           'low_quota_dismissed_at': lowQuotaDismissedAt?.toIso8601String(),
           'dismissed_update': dismissedUpdate,
           'update_checked_at': updateCheckedAt?.toIso8601String(),

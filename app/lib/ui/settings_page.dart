@@ -630,6 +630,25 @@ class _SettingsPageState extends State<SettingsPage> {
             onChanged: (v) => s.update(showPublicIp: v),
           ),
         ),
+        // A country and a delay each cost a short-lived core, so the list of
+        // them is the most expensive thing the app does by itself. Off, the
+        // row's own buttons still measure what is asked of them.
+        _Row(
+          icon: Icons.flag_outlined,
+          label: 'Fetch flags automatically',
+          child: Switch(
+            value: s.autoFlags,
+            onChanged: (v) => s.update(autoFlags: v),
+          ),
+        ),
+        _Row(
+          icon: Icons.bolt_outlined,
+          label: 'Measure pings automatically',
+          child: Switch(
+            value: s.autoPing,
+            onChanged: (v) => s.update(autoPing: v),
+          ),
+        ),
         if (Platform.isAndroid)
           ValueListenableBuilder(
             valueListenable: AndroidCore.showSpeed,
