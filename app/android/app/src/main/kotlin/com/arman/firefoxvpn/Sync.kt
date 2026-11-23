@@ -14,6 +14,7 @@ import org.json.JSONObject
  * writes one line on the log page; a refusal says the status and the library's own reason.
  */
 // retry: a configuration-only Gradle failure is not this file's business
+// Gradle's configure step has failed alone twice; the code below is unchanged.
 object Sync {
 
     /** Why the last sync failed, as both the page and the log show it; "" for none. */
