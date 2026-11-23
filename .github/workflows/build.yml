@@ -69,15 +69,15 @@ jobs:
           mkdir -p ../out
           flutter build apk --release --split-per-abi --dart-define=APP_VERSION=$v --dart-define=APP_COMMIT=${GITHUB_SHA::7}
           for abi in arm64-v8a armeabi-v7a x86_64; do
-            cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "../out/Arman-VPN-Android-$abi.apk"
+            cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "../out/Blob-VPN-Android-$abi.apk"
           done
           flutter build apk --release --dart-define=APP_VERSION=$v --dart-define=APP_COMMIT=${GITHUB_SHA::7}
-          cp build/app/outputs/flutter-apk/app-release.apk ../out/Arman-VPN-Android-universal.apk
+          cp build/app/outputs/flutter-apk/app-release.apk ../out/Blob-VPN-Android-universal.apk
           # One zip with the per-ABI APKs, for handing a phone the right file.
-          (cd ../out && zip -9 -q Arman-VPN-Android-apks.zip \
-            Arman-VPN-Android-arm64-v8a.apk \
-            Arman-VPN-Android-armeabi-v7a.apk \
-            Arman-VPN-Android-x86_64.apk)
+          (cd ../out && zip -9 -q Blob-VPN-Android-apks.zip \
+            Blob-VPN-Android-arm64-v8a.apk \
+            Blob-VPN-Android-armeabi-v7a.apk \
+            Blob-VPN-Android-x86_64.apk)
           } 2>&1 | tee build.log
           status=${PIPESTATUS[0]}
           grep -E '^(e: |w: )|error:|Error: |^FAILURE: |^> Task .* FAILED|^Execution failed|Caused by:|^> |^lib/|^test/' build.log \
@@ -97,30 +97,30 @@ jobs:
       - name: Artifact arm64-v8a
         uses: actions/upload-artifact@v7
         with:
-          name: Arman-VPN-Android-arm64-v8a
-          path: out/Arman-VPN-Android-arm64-v8a.apk
+          name: Blob-VPN-Android-arm64-v8a
+          path: out/Blob-VPN-Android-arm64-v8a.apk
           if-no-files-found: error
       - name: Artifact armeabi-v7a
         uses: actions/upload-artifact@v7
         with:
-          name: Arman-VPN-Android-armeabi-v7a
-          path: out/Arman-VPN-Android-armeabi-v7a.apk
+          name: Blob-VPN-Android-armeabi-v7a
+          path: out/Blob-VPN-Android-armeabi-v7a.apk
           if-no-files-found: error
       - name: Artifact x86_64
         uses: actions/upload-artifact@v7
         with:
-          name: Arman-VPN-Android-x86_64
-          path: out/Arman-VPN-Android-x86_64.apk
+          name: Blob-VPN-Android-x86_64
+          path: out/Blob-VPN-Android-x86_64.apk
           if-no-files-found: error
       - name: Artifact universal
         uses: actions/upload-artifact@v7
         with:
-          name: Arman-VPN-Android-universal
-          path: out/Arman-VPN-Android-universal.apk
+          name: Blob-VPN-Android-universal
+          path: out/Blob-VPN-Android-universal.apk
           if-no-files-found: error
       - name: Artifact all three in one zip
         uses: actions/upload-artifact@v7
         with:
-          name: Arman-VPN-Android-apks
-          path: out/Arman-VPN-Android-apks.zip
+          name: Blob-VPN-Android-apks
+          path: out/Blob-VPN-Android-apks.zip
           if-no-files-found: error
