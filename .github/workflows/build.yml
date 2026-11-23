@@ -86,13 +86,18 @@ jobs:
           # ':gradle' refusing to configure is this runner's own flake: it names no
           # file and no line of ours, and it has cost a finished build before. It
           # is asked once more, and only when that refusal is all the log says.
-          if [ "$status" -ne 0 ] && grep -q "configuring project ':gradle'" build.log \
+          if [ "$status" -ne 0 ] && grep -qE "configuring project ':gradle'|Could not (resolve|download|create)" build.log \
              && ! grep -qE '^e: |^error:|Error: |^lib/|^test/' build.log; then
-            echo "::notice::':gradle' would not configure; building once more"
+            echo "::notice::the build system itself refused to start; building once more"
             rm -f build.log
             do_build 2>&1 | tee build.log
             status=${PIPESTATUS[0]}
           fi
+          # The lines that name a compiler error, and the block under "What went
+          # wrong" - a configure failure says its real reason only there, and
+          # without it the job reads as a mystery.
+          sed -n '/\* What went wrong:/,/^\* Try:/p' build.log | head -40 \
+            | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::$line"; done
           grep -E '^(e: |w: )|error:|Error: |^FAILURE: |^> Task .* FAILED|^Execution failed|Caused by:|^> |^lib/|^test/' build.log \
             | head -80 | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::$line"; done
           # R8 and the packaging steps name their failure in a block no single
