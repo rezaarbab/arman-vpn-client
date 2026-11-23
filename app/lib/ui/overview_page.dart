@@ -1820,6 +1820,9 @@ class _HomeDelay extends StatelessWidget {
     final (text, color) = switch (test) {
       null => (l.testConnection, palette.muted),
       final t when !t.ok => (l.testFailed, palette.error),
+      // a round trip under 10 ms is a local answer, not a server's: it is not
+      // a delay and must not be painted as one
+      final t when t.responseMs < 10 => (l.testConnection, palette.muted),
       final t => (l.milliseconds(t.responseMs), delayColor(t.responseMs)),
     };
     return Tooltip(
@@ -2912,47 +2915,64 @@ class _OurPlaceCard extends StatefulWidget {
 }
 
 class _OurPlaceCardState extends State<_OurPlaceCard> {
+  /// What this run already knows about a row, kept between pages: a card built
+  /// again after a visit to Settings paints from here at once instead of
+  /// blanking until the next answer comes back.
+  static final _ccById = <String, String>{};
+  static final _ipById = <String, String>{};
+  static final _msById = <String, int>{};
+
   String _cc = '';
   String _for = '';
   int _ping = -1;
   String _ip = '';
-  Timer? _retry;
+
   @override
   void initState() {
     super.initState();
+    _show(widget.selection);
     _load();
-    if (!WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations) {
-      // until it is known: the first call may have to probe the server
-      _retry = Timer.periodic(const Duration(seconds: 2), (_) {
-        if (mounted && _cc.isEmpty) _load();
-      });
-    }
   }
-  @override
-  void dispose() {
-    _retry?.cancel();
-    super.dispose();
+
+  /// The figures this row already has, before anything is asked for.
+  void _show(String id) {
+    _cc = _ccById[id] ?? '';
+    _ip = _ipById[id] ?? '';
+    _ping = _msById[id] ?? -1;
   }
+
   @override
   void didUpdateWidget(covariant _OurPlaceCard old) {
     super.didUpdateWidget(old);
-    if (old.selection != widget.selection) _load();
+    if (old.selection != widget.selection) {
+      _show(widget.selection);
+      setState(() {});
+      _load();
+    }
   }
+
   Future<void> _load() async {
     final id = widget.selection;
     _for = id;
     if (id.isEmpty) return;
     try {
       final info = await IrRowsBridge.pickInfo();
-      if (mounted && _for == id) {
-        setState(() {
-          final cc = (info['cc'] ?? '').toLowerCase();
-          if (cc.length == 2) _cc = cc;
-          final ms = int.tryParse(info['ms'] ?? '') ?? -1;
-          _ping = ms < 10 ? -1 : ms;
-          _ip = info['ip'] ?? '';
-        });
-      }
+      if (!mounted || _for != id) return;
+      final cc = (info['cc'] ?? '').toLowerCase();
+      final ms = int.tryParse(info['ms'] ?? '') ?? -1;
+      final ip = info['ip'] ?? '';
+      setState(() {
+        if (cc.length == 2) {
+          _cc = cc;
+          _ccById[id] = cc;
+        }
+        _ping = ms < 10 ? -1 : ms;
+        _msById[id] = _ping;
+        if (ip.isNotEmpty) {
+          _ip = ip;
+          _ipById[id] = ip;
+        }
+      });
     } catch (_) {}
   }
   @override
@@ -3068,16 +3088,23 @@ class _MyExit extends StatefulWidget {
 }
 
 class _MyExitState extends State<_MyExit> {
-  /// One read per run: opening Home is not a reason to ask the network.
+  /// One read per run: opening Home is not a reason to ask the network. What
+  /// the last read gave stays here, so a page built again shows the address it
+  /// already knows instead of an empty line.
   static bool _fetched = false;
+  static String _knownCc = '';
+  static String _knownIp = '';
 
   String _cc = '';
   String _ip = '';
   bool _busy = false;
+  bool _failed = false;
 
   @override
   void initState() {
     super.initState();
+    _cc = _knownCc;
+    _ip = _knownIp;
     final ask = !_fetched;
     _fetched = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -3094,17 +3121,29 @@ class _MyExitState extends State<_MyExit> {
         _ip = m['ip'] ?? '';
         final cc = (m['cc'] ?? '').toLowerCase();
         if (cc.length == 2) _cc = cc;
+        // an asked read that answered nothing is said, not left blank: the
+        // button looked dead exactly when it was not
+        _failed = ask && _ip.isEmpty;
+        _knownCc = _cc;
+        _knownIp = _ip;
         _busy = false;
       });
     } catch (_) {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _failed = ask;
+          _busy = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (_ip.isEmpty && _cc.isEmpty && !_busy) return const SizedBox.shrink();
+    if (_ip.isEmpty && _cc.isEmpty && !_busy && !_failed) {
+      return const SizedBox.shrink();
+    }
     final style = theme.textTheme.labelSmall?.copyWith(color: widget.muted);
     return Padding(
       padding: const EdgeInsets.only(top: 6),
@@ -3124,7 +3163,16 @@ class _MyExitState extends State<_MyExit> {
                   ),
           ),
           const SizedBox(width: 6),
-          Expanded(child: Text(_ip.isEmpty ? '—' : _ip, style: style)),
+          Expanded(
+            child: Text(
+              _ip.isNotEmpty
+                  ? _ip
+                  : _failed
+                      ? 'not measured'
+                      : '—',
+              style: style,
+            ),
+          ),
           IconButton(
             tooltip: 'My exit IP',
             visualDensity: VisualDensity.compact,

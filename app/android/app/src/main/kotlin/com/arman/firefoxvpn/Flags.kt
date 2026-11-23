@@ -64,21 +64,26 @@ object Flags {
         if (handle == 0) return -1
         return try {
             val t0 = System.nanoTime()
-            val loc = NativeSec.probe(TRACE, "loc", port)
-            if (loc.length == 2) {
+            // the same answer carries the country and the exit IP: a ping round
+            // fills the flags for free, while a flag round never writes a ping
+            val parts = runCatching { NativeSec.probe(TRACE, "ip;loc", port).split(';') }
+                .getOrDefault(emptyList())
+            val cc = parts.getOrNull(1).orEmpty().trim().uppercase()
+            val ip = parts.getOrNull(0).orEmpty().trim()
+            if (cc.length != 2) {
+                -1
+            } else {
                 val raw = ((System.nanoTime() - t0) / 1000000L).toInt()
                 // a round trip through a remote server is never 1 ms: that is a local
                 // answer and would paint a dead row green
                 val ms = if (raw < 10) -1 else raw
-                // a refused answer is not a measurement: it must not overwrite
-                // the number an earlier round did learn
-                if (ms > 0) {
-                    context.getSharedPreferences("blob_core", Context.MODE_PRIVATE)
-                        .edit().putInt("pd_" + id.take(64), ms).apply()
-                }
+                val edit = context.getSharedPreferences("blob_core", Context.MODE_PRIVATE).edit()
+                if (ms > 0) edit.putInt("pd_" + id.take(64), ms)
+                cache[id] = cc
+                edit.putString("cc_" + id.take(64), cc)
+                if (ip.length in 7..45) edit.putString("pi_" + id.take(64), ip)
+                edit.apply()
                 ms
-            } else {
-                -1
             }
         } finally {
             runCatching { NativeSec.probeStop(handle) }

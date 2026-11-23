@@ -26,7 +26,6 @@ class _ServersPageState extends State<ServersPage> {
   final _search = TextEditingController();
   String? _picked;
   bool _alive = true;
-  Map<String, int> _ping = const {};
   bool _sortPing = false;
   bool _busy = false;
   bool _searchOpen = false;
@@ -35,10 +34,16 @@ class _ServersPageState extends State<ServersPage> {
   /// The tunnel as the list shows it, refreshed once a second while the page
   /// is open; only a change redraws.
   Map<String, String> _live = const {};
-  Map<String, String> _stats = const {};
   Timer? _ticker;
   bool _flagging = false;
-  final _cc = <String, String>{};
+
+  /// What this run knows - the measured delays, the countries, the last
+  /// sessions - kept between pages: opening the list again after a visit to
+  /// Settings must not blank the flags and the numbers until the reads come
+  /// back a few seconds later.
+  static final Map<String, int> _ping = <String, int>{};
+  static final Map<String, String> _stats = <String, String>{};
+  static final Map<String, String> _cc = <String, String>{};
 
   /// Rows this run already asked about. A country is measured once per run:
   /// a row that did not answer is not asked again every time the page opens.
@@ -129,10 +134,13 @@ class _ServersPageState extends State<ServersPage> {
         try {
           final m = await r;
           if (!_alive) return;
-          setState(() => _ping = {..._ping, ...m});
+          setState(() => _ping.addAll(m));
         } catch (_) {}
       }
     }
+    // The ping round carried the country and the exit IP with it: read them
+    // out of the store so the flags arrive with the numbers, not after them.
+    if (_alive) _loadCached();
     if (mounted) setState(() => _pinging = false);
   }
 
@@ -153,7 +161,14 @@ class _ServersPageState extends State<ServersPage> {
   Future<void> _loadPings() async {
     try {
       final m = await IrRowsBridge.pingsAll();
-      if (_alive && m.isNotEmpty) setState(() => _ping = {...m, ..._ping});
+      // what a ping round already measured for this visit wins over the store
+      if (_alive && m.isNotEmpty) {
+        setState(() {
+          for (final e in m.entries) {
+            _ping.putIfAbsent(e.key, () => e.value);
+          }
+        });
+      }
     } catch (_) {}
   }
 
@@ -166,7 +181,7 @@ class _ServersPageState extends State<ServersPage> {
       if (!_alive) return;
       setState(() {
         for (final e in f.entries) { _cc[e.key] = e.value.toLowerCase(); }
-        if (st.isNotEmpty) _stats = {..._stats, ...st};
+        if (st.isNotEmpty) _stats.addAll(st);
       });
     } catch (_) {}
   }
@@ -223,7 +238,7 @@ class _ServersPageState extends State<ServersPage> {
     if (ids.isEmpty || !_alive) return;
     try {
       final m = await IrRowsBridge.stats(ids);
-      if (_alive && m.isNotEmpty) setState(() => _stats = m);
+      if (_alive && m.isNotEmpty) setState(() => _stats.addAll(m));
     } catch (_) {}
   }
 
@@ -399,7 +414,7 @@ class _ServersPageState extends State<ServersPage> {
                   () async {
                     await IrRowsBridge.statsResetAll();
                     if (!_alive) return;
-                    setState(() => _stats = const {});
+                    setState(_stats.clear);
                   },
                 ),
                 const Spacer(),
@@ -489,10 +504,22 @@ class _ServersPageState extends State<ServersPage> {
                               onPressed: () async {
                                 await IrRowsBridge.statReset(row.id);
                                 if (!_alive) return;
-                                setState(() => _stats = Map<String, String>.from(_stats)..remove(row.id));
+                                setState(() => _stats.remove(row.id));
                               },
                             ),
                           if (_picked == row.id) const Icon(Icons.check),
+                          // Every row can go by hand, not only a dead one: the
+                          // ping's verdict is not always known, the wish is.
+                          IconButton(
+                            tooltip: 'Remove',
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints.tightFor(width: 26, height: 26),
+                            iconSize: 16,
+                            icon: Icon(Icons.close_rounded,
+                                color: theme.colorScheme.onSurfaceVariant),
+                            onPressed: () => _remove([row.id]),
+                          ),
                         ],
                       ),
                       onTap: () {

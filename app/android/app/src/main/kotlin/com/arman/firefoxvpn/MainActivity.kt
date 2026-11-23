@@ -152,7 +152,7 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                 }
-                "blobTest" -> inBackground(result) { CoreService.testPing(this) }
+                "blobTest" -> inAsk(result) { CoreService.testPing(this) }
                 "blobLogs" -> result.success(CoreService.logsSince(call.argument<Int>("after") ?: 0))
                 "irPick" -> {
                     CoreService.pick(this, call.argument<String>("id") ?: "")
@@ -317,13 +317,13 @@ class MainActivity : FlutterActivity() {
                 }
                 "irPickPing" -> result.success(CoreService.lastDelay(this, CoreService.picked(this)))
                 "irPingsAll" -> result.success(Flags.allDelays(this))
-                "irPickInfo" -> inProbe(result) {
+                "irPickInfo" -> inAsk(result) {
                     Flags.info(this, CoreService.picked(this))
                 }
-                "irMine" -> inProbe(result) {
+                "irMine" -> inAsk(result) {
                     Flags.mine(this, call.argument<Boolean>("ask") == true)
                 }
-                "irFlagOf" -> inProbe(result) {
+                "irFlagOf" -> inAsk(result) {
                     val id = CoreService.picked(this)
                     Flags.of(this, id).ifEmpty { Flags.probe(this, id) }
                 }
@@ -388,6 +388,11 @@ class MainActivity : FlutterActivity() {
     /// pool so that a list of flags never queues the app's own answers (the
     /// installed apps, the row store) behind it.
     private val probeWorker = Executors.newFixedThreadPool(3)
+
+    /// What the user pressed - the home card's refresh, its delay pill - must
+    /// answer now, not after a hundred rows learned their country. One thread,
+    /// because two of these at once is already more than a tap asked for.
+    private val askWorker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
 
     /** Country codes for first-run routing; no phone or location permissions. */
@@ -426,6 +431,18 @@ class MainActivity : FlutterActivity() {
     /** Runs a probe on the probe pool, where several rows can answer at once. */
     private fun inProbe(result: Result, work: () -> Any?) {
         probeWorker.execute {
+            val value = try {
+                work()
+            } catch (e: Exception) {
+                null
+            }
+            main.post { result.success(value) }
+        }
+    }
+
+    /** Runs what the user pressed, on a thread the bulk pass never occupies. */
+    private fun inAsk(result: Result, work: () -> Any?) {
+        askWorker.execute {
             val value = try {
                 work()
             } catch (e: Exception) {

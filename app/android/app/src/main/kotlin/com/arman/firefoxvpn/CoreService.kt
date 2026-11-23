@@ -135,6 +135,10 @@ class CoreService : VpnService() {
             return
         }
         shownName = runCatching { NativeSec.payloadText(row, 1) }.getOrDefault("")
+        // The clock under the button starts here, not when the core says it is
+        // up: the callback can come late, or not at all after a background, and
+        // a running tunnel must not lose its own uptime.
+        dialStarted = System.currentTimeMillis()
         log("dialing")
         try {
             val builder = Builder()
@@ -199,6 +203,7 @@ class CoreService : VpnService() {
         keepStats()
         connected = false
         connectedSince = 0L
+        dialStarted = 0L
         main.removeCallbacks(stats)
         main.removeCallbacks(onCoreUp)
         try {
@@ -351,6 +356,13 @@ class CoreService : VpnService() {
         /** When the tunnel came up, for the clock and for a test's freshness. */
         @Volatile
         var connectedSince = 0L
+            internal set
+
+        /** When this dial was asked for. The uptime falls back to it when the
+         *  core's up-callback is late, so the line under the button does not
+         *  disappear on a visit to another app. */
+        @Volatile
+        var dialStarted = 0L
             internal set
 
         /** What the tunnel carried so far, and its last second's rate. */
@@ -516,8 +528,16 @@ class CoreService : VpnService() {
                     "phase" to phase,
                     "message" to if (on && !connected) lastFailure else "",
                 ),
-                "proxy" to if (connected) {
-                    mapOf("listen" to "", "started_at" to isoTime(connectedSince))
+                "proxy" to if (on) {
+                    // the tunnel is asked for whenever it is wanted and up: the
+                    // core's own up-callback can be late, and a missing block
+                    // here blanks the uptime and the pills under the button
+                    mapOf(
+                        "listen" to "",
+                        "started_at" to isoTime(
+                            if (connectedSince > 0L) connectedSince else dialStarted
+                        ),
+                    )
                 } else {
                     null
                 },
@@ -537,18 +557,17 @@ class CoreService : VpnService() {
         }
 
         /**
-         * The tunnel's own answer for the home page: up or not. The ping is a latency
-         * sample beside it, never the verdict - a host that drops ICMP/TCP probes
-         * would otherwise paint a working tunnel yellow forever.
+         * The tunnel's own answer for the home page: up or not. The number beside it is a real
+         * round trip to the server - a raw tcp connect answers 1-2 ms for a host that accepts the
+         * socket and does nothing else, and that figure used to be shown as the delay.
          */
         fun testPing(context: Context): Map<String, Any?> {
             val id = pickedId(context)
-            val row = if (id.isBlank()) -1 else runCatching { NativeSec.rowOf(id) }.getOrDefault(-1)
-            val ms = if (row < 0) -1 else NativeSec.tcpPing(row, 5000)
+            val ms = Flags.delay(context, id)
             val m = mapOf(
                 "at" to isoTime(System.currentTimeMillis()),
                 "ok" to (on || connected),
-                "target" to "tcp",
+                "target" to "trace",
                 "response_ms" to ms,
                 "total_ms" to ms,
             )
