@@ -41,6 +41,7 @@ class CoreService : VpnService() {
     private var rateUp = 0L
     private var rateDown = 0L
     private var lastTick = -1L
+    private var statTick = 0
 
     private val notifier by lazy { getSystemService(NotificationManager::class.java) }
 
@@ -62,6 +63,10 @@ class CoreService : VpnService() {
                 traffic = Traffic(lastUp, lastDown, rateUp, rateDown)
             } catch (_: Exception) {
             }
+            // every five seconds the row's own line is written down, so the list has a
+            // number to show whether or not this session is still running
+            statTick = (statTick + 1) % 5
+            if (statTick == 0) keepStatsRow()
             tick()
             main.postDelayed(this, 1000L)
         }
@@ -230,18 +235,30 @@ class CoreService : VpnService() {
 
     /** What this session carried, kept per server, so the list can show it later. */
     private fun keepStats() {
-        val id = pickedId(this)
-        if (id.isBlank() || connectedSince <= 0L) return
-        val ms = System.currentTimeMillis() - connectedSince
         val p0 = prefs(this)
         p0.edit()
             .putLong("tot_up", p0.getLong("tot_up", 0L) + lastUp)
             .putLong("tot_down", p0.getLong("tot_down", 0L) + lastDown)
             .apply()
+        keepStatsRow()
+        log("session kept")
+    }
+
+    /**
+     * The running session's line, written as it goes rather than only at the end.
+     *
+     * Two things used to blank a row: the number was stored only when the tunnel closed - so a
+     * process that died, or a page read while the tunnel was still up, showed nothing - and it
+     * was filed under whoever was picked at that moment, which after a delete or a switch is
+     * not the server that carried the traffic.
+     */
+    private fun keepStatsRow() {
+        val id = pickedIdOfLastDial
+        if (id.isBlank() || connectedSince <= 0L) return
+        val ms = System.currentTimeMillis() - connectedSince
         prefs(this).edit()
             .putString("stats_" + id.take(64), "$ms|$lastUp|$lastDown")
             .apply()
-        log("session kept")
     }
 
     private fun tick() {

@@ -59,6 +59,83 @@ class _ServersPageState extends State<ServersPage> {
   /// Rows being identified right now.
   final _locating = <String>{};
 
+  /// The rows the user marked. Kept by the phone, so they are there on the
+  /// next start; the marked ones come first and can be pinged on their own.
+  static final _pins = <String>{};
+
+  Future<void> _loadPins() async {
+    try {
+      final l = await IrRowsBridge.pins();
+      if (!_alive) return;
+      setState(() {
+        _pins
+          ..clear()
+          ..addAll(l);
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _togglePin(String id) async {
+    final on = !_pins.contains(id);
+    setState(() {
+      if (on) {
+        _pins.add(id);
+      } else {
+        _pins.remove(id);
+      }
+    });
+    try {
+      final kept = await IrRowsBridge.pin(id, on);
+      if (!_alive) return;
+      setState(() {
+        _pins
+          ..clear()
+          ..addAll(kept);
+      });
+    } catch (_) {}
+  }
+
+  /// Pings only the marked rows - the button that asks for them appears once
+  /// there is something marked, and never when there is nothing to ask.
+  Future<void> _pingPinned() => _pingAll(only: [
+        for (final r in _servers.rows)
+          if (_pins.contains(r.id)) r.id,
+      ]);
+
+  /// The flag's slot. A row that was asked and never answered gets a mark of
+  /// its own: an empty space reads as "still loading" forever, and the honest
+  /// answer for that host is "no country could be had from it".
+  Widget _flagSlot(IrServer row, ThemeData theme) {
+    final cc = _cc[row.id];
+    if (cc != null && !_isDead(row.id)) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(7),
+        child: SvgPicture.asset('assets/flags/$cc.svg', width: 40, height: 28),
+      );
+    }
+    if (_isDead(row.id)) return const SizedBox.shrink();
+    if (!_asked.contains(row.id) && !_locating.contains(row.id)) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      width: 40,
+      height: 28,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Text(
+        '?',
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+
   /// One row's server: where it is and what address that is. A DNS answer and
   /// one page - no core - so it is fast and works with the tunnel up or down.
   Future<void> _identify(String id) async {
@@ -127,6 +204,7 @@ class _ServersPageState extends State<ServersPage> {
         if (widget.settings.autoPing && _ping.isEmpty) _pingAll();
       });
       _loadPings();
+      _loadPins();
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _pollLive());
     });
   }
@@ -171,10 +249,10 @@ class _ServersPageState extends State<ServersPage> {
   }
 
   /// A real connect timed in C, a few rows at a time so the list fills as it goes.
-  Future<void> _pingAll() async {
+  Future<void> _pingAll({List<String>? only}) async {
     if (!_alive || _pinging) return;
     setState(() => _pinging = true);
-    final ids = [for (final r in _servers.rows.take(48)) r.id];
+    final ids = only ?? [for (final r in _servers.rows.take(48)) r.id];
     for (var i = 0; i < ids.length; i += 12) {
       if (!_alive) return;
       // three calls at once, on the three probe threads; each does a few rows
@@ -419,12 +497,18 @@ class _ServersPageState extends State<ServersPage> {
       }
       (groups[r.category.isEmpty ? 'Default' : r.category] ??= []).add(r);
     }
-    if (_sortPing) {
-      int key(IrServer r) =>
-          _ping[r.id] == null || _ping[r.id]! < 10 ? 1 << 30 : _ping[r.id]!;
-      for (final e in groups.values) {
-        e.sort((a, b) => key(a).compareTo(key(b)));
-      }
+    // One comparison, in one pass: the marked rows lead, and within them the
+    // order the user asked for. Sorting twice with Dart's unstable sort would
+    // let the second pass undo the first.
+    int pinKey(IrServer r) => _pins.contains(r.id) ? 0 : 1;
+    int pingKey(IrServer r) =>
+        _ping[r.id] == null || _ping[r.id]! < 10 ? 1 << 30 : _ping[r.id]!;
+    for (final e in groups.values) {
+      e.sort((a, b) {
+        final p = pinKey(a).compareTo(pinKey(b));
+        if (p != 0) return p;
+        return _sortPing ? pingKey(a).compareTo(pingKey(b)) : 0;
+      });
     }
     // The reset buttons appear where there is something to reset: a row that
     // carried nothing does not need a button that would do nothing.
@@ -489,6 +573,12 @@ class _ServersPageState extends State<ServersPage> {
                       : const Icon(Icons.bolt_rounded),
                   _pingAll,
                 ),
+                if (_pins.isNotEmpty)
+                  btn(
+                    'Ping the marked servers',
+                    const Icon(Icons.push_pin_rounded),
+                    _pingPinned,
+                  ),
                 btn(
                   'Update the list',
                   _busy
@@ -582,16 +672,7 @@ class _ServersPageState extends State<ServersPage> {
                         // a row that did not answer carries no flag either: the
                         // lookup knows where that host sits, but no server is
                         // standing there for this phone
-                        child: _cc[row.id] == null || _isDead(row.id)
-                            ? const SizedBox.shrink()
-                            : ClipRRect(
-                                borderRadius: BorderRadius.circular(7),
-                                child: SvgPicture.asset(
-                                  'assets/flags/${_cc[row.id]}.svg',
-                                  width: 40,
-                                  height: 28,
-                                ),
-                              ),
+                        child: _flagSlot(row, theme),
                       ),
                       title: Text(row.name,
                           maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -609,6 +690,27 @@ class _ServersPageState extends State<ServersPage> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
+                              ),
+                              // The mark: it keeps this row at the top of its
+                              // group and lets the bar ping the marked ones.
+                              IconButton(
+                                tooltip: _pins.contains(row.id)
+                                    ? 'Unmark this server'
+                                    : 'Mark this server',
+                                visualDensity: VisualDensity.compact,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints.tightFor(
+                                    width: 26, height: 26),
+                                iconSize: 15,
+                                icon: Icon(
+                                  _pins.contains(row.id)
+                                      ? Icons.push_pin_rounded
+                                      : Icons.push_pin_outlined,
+                                  color: _pins.contains(row.id)
+                                      ? theme.colorScheme.primary
+                                      : theme.colorScheme.onSurfaceVariant,
+                                ),
+                                onPressed: () => _togglePin(row.id),
                               ),
                               IconButton(
                                 tooltip: 'Identify this server',

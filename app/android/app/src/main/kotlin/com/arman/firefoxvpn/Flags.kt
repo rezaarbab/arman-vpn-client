@@ -81,7 +81,10 @@ object Flags {
             val took = ((System.nanoTime() - t0) / 1000000L).toInt()
             val ip = parts.getOrNull(0).orEmpty().trim()
             val cc = parts.getOrNull(1).orEmpty().trim().uppercase()
-            val ms = if (parts.isEmpty() || took < 10) -1 else took
+            // a round trip counts only when the page really answered through this server:
+            // a handshake that finishes without carrying anything is not a delay, and the
+            // core's own outbound measurement did report exactly that as a fine number
+            val ms = if (cc.length != 2 || took < 10) -1 else took
             if (cc.length == 2) {
                 cache[id] = cc
                 val edit = prefs(context).edit().putString("cc_" + id.take(64), cc)
@@ -126,24 +129,24 @@ object Flags {
         return probe(context, id)
     }
 
-    /** Milliseconds through the server itself; -1 when it does not answer. */
+    /**
+     * Milliseconds through the server itself; -1 when it does not answer.
+     *
+     * Measured the same way with the tunnel up and down, on purpose. The core's own outbound
+     * measurement finishes when the handshake finishes, and a server that accepts a connection
+     * and carries nothing is exactly what the user calls dead - so it kept answering a fine
+     * number for rows that cannot reach anything.
+     */
     fun delay(context: Context, id: String): Int {
         val row = rowOf(id)
         if (row < 0) return -1
-        val ms = if (CoreService.on) {
-            // the tunnel is up: its own core measures the row, so no second core is started
-            // for a number the running one can already give
-            runCatching { NativeSec.delayOf(row, TRACE).toInt() }.getOrDefault(-1)
-        } else {
-            readThrough(context, id, row).first
-        }
-        // the verdict is kept, both ways: -1 says "this one did not answer", and
-        // without it the row looks merely unknown on the next visit - which is
-        // how a dead server came back with a flag and a green number beside it
+        val ms = readThrough(context, id, row).first
+        // the verdict is kept both ways: -1 says "this one did not answer", and without it the
+        // row looks merely unmeasured on the next visit, which is how a dead server came back
+        // with a flag and a green figure beside it
         val tail = id.take(64)
-        val kept = if (ms >= 10) ms else -1
-        prefs(context).edit().putInt("pd_$tail", kept).apply()
-        return kept
+        prefs(context).edit().putInt("pd_$tail", if (ms >= 10) ms else -1).apply()
+        return if (ms >= 10) ms else -1
     }
 
     /**

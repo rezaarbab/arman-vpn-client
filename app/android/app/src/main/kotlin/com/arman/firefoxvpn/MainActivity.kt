@@ -160,6 +160,14 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "irPicked" -> result.success(CoreService.pickedId(this))
+                "irPins" -> result.success(IrRows.pins(this))
+                "irPin" -> result.success(
+                    IrRows.pin(
+                        this,
+                        call.argument<String>("id") ?: "",
+                        call.argument<Boolean>("on") == true,
+                    )
+                )
                 // The row leaves the store, the sealed copy and the caches. The tunnel is not
                 // dropped with it: it is already running on a config that was made, and stopping a
                 // working connection because one entry left the list would be its own surprise.

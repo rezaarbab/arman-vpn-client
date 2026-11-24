@@ -64,6 +64,9 @@ object IrRows {
             val t = id.take(64)
             edit.remove("cc_$t").remove("pd_$t").remove("pi_$t").remove("stats_$t")
         }
+        // a pinned row that no longer exists must not keep its mark
+        val left = pins(context).filter { !clean.contains(it) }
+        edit.putString("pins", left.joinToString(";"))
         edit.apply()
         val kept = NativeSec.drop(clean.joinToString(";"))
         CoreService.log(
@@ -74,6 +77,27 @@ object IrRows {
     }
 
     fun drop(context: android.content.Context, id: String): Int = drop(context, listOf(id))
+
+    /** The rows the user pinned, in the order he pinned them. */
+    fun pins(context: android.content.Context): List<String> =
+        (prefsFile(context).getString("pins", "") ?: "")
+            .split(';').filter { it.isNotBlank() }
+
+    /** Marks one row, and hands back the whole list so the page never has to guess. */
+    fun pin(context: android.content.Context, id: String, on: Boolean): List<String> {
+        if (id.isBlank()) return pins(context)
+        val now = pins(context).toMutableList()
+        if (on) {
+            if (!now.contains(id)) now.add(id)
+        } else {
+            now.remove(id)
+        }
+        prefsFile(context).edit().putString("pins", now.joinToString(";")).apply()
+        return now
+    }
+
+    private fun prefsFile(context: android.content.Context) =
+        context.getSharedPreferences("blob_core", android.content.Context.MODE_PRIVATE)
 
     /** After a sync replaced the store: everything the user deleted goes out again, in one call. */
     fun reapplyDrops(context: android.content.Context) {

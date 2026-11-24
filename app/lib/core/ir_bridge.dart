@@ -103,6 +103,17 @@ class IrRowsBridge {
   static Future<String> locate(String id) async =>
       await _ch.invokeMethod<String>('irLocate', {'id': id}) ?? '';
 
+  /// The rows the user marked, in the order he marked them.
+  static Future<List<String>> pins() async =>
+      await _ch.invokeListMethod<String>('irPins') ?? const [];
+
+  /// Marks [id] or clears the mark; the answer is the whole list again, so the
+  /// page never has to guess what the phone kept.
+  static Future<List<String>> pin(String id, bool on) async {
+    final l = await _ch.invokeListMethod<String>('irPin', {'id': id, 'on': on});
+    return l ?? const [];
+  }
+
   /// Each named row's last session: "ms|up|down".
   static Future<Map<String, String>> stats(List<String> ids) async {
     final m = await _ch.invokeMethod<Map>('irStats', {'ids': ids});
