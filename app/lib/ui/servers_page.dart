@@ -365,7 +365,7 @@ class _ServersPageState extends State<ServersPage> {
   /// to allow it, and a worker that says nothing ("a") leaves the choice with the
   /// user's own switch. A button the person presses is never gated: these
   /// commands are about what the app does on its own.
-  bool _autoFlags => _allowed(
+  bool get _autoFlags => _allowed(
     IrRowsBridge.adminFlag(IrRowsBridge.adminFlagStart),
     widget.settings.autoFlags,
   ) &&
@@ -374,7 +374,7 @@ class _ServersPageState extends State<ServersPage> {
         widget.settings.autoFlags,
       );
 
-  bool _autoPing => _allowed(
+  bool get _autoPing => _allowed(
     IrRowsBridge.adminFlag(IrRowsBridge.adminPingStart),
     widget.settings.autoPing,
   ) &&
