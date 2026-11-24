@@ -163,8 +163,22 @@ class MainActivity : FlutterActivity() {
                 "irPins" -> result.success(IrRows.pins(this))
                 "irDropCount" -> result.success(IrRows.dropCount(this))
                 "irUndrop" -> result.success(IrRows.clearDrops(this))
-                // the panel's four behaviour commands, as the app has them kept
+                // the panel's own switch over the whole app, in both directions
                 "irAdmFlags" -> result.success(Sync.adminFlags(this))
+                "irAdmin" -> result.success(
+                    mapOf(
+                        "popup" to Admin.popup(this),
+                        "update" to Admin.update(this),
+                    ),
+                )
+                "irAdminSeen" -> {
+                    Admin.dismiss(
+                        this,
+                        call.argument<String>("kind") ?: "",
+                        call.argument<String>("id") ?: "",
+                    )
+                    result.success(null)
+                }
                 "irPin" -> result.success(
                     IrRows.pin(
                         this,

@@ -100,7 +100,11 @@ List<(String, List<SettingsEntry>)> settingsGroups(
     l.sectionGeneral,
     [
       (SettingsSection.general, Icons.tune_rounded, l.sectionGeneral),
-      (SettingsSection.routing, Icons.alt_route_rounded, l.sectionRouting),
+      // On a phone routing is read under About, where the app itself is
+      // described: which apps skip the tunnel and where the rest goes is set
+      // once, not fiddled with. The computer keeps it in this list.
+      if (!Platform.isAndroid)
+        (SettingsSection.routing, Icons.alt_route_rounded, l.sectionRouting),
       if (tun) (SettingsSection.tun, Icons.vpn_lock_rounded, l.sectionTun),
     ],
   ),

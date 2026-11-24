@@ -133,6 +133,10 @@ class CoreService : VpnService() {
             dropTunnel("the operator has switched this app off")
             return
         }
+        if (Admin.updateBlocks(this)) {
+            dropTunnel("the panel asks for a newer version first")
+            return
+        }
         val id = pickedId(this)
         if (id.isBlank()) {
             dropTunnel("no server picked")
@@ -615,6 +619,11 @@ class CoreService : VpnService() {
                 // and comes back on its own says the tunnel failed, not that it was
                 // stopped on purpose
                 log("connect: the operator has switched this app off")
+                ConnectWidget.updateAll(context)
+                return false
+            }
+            if (Admin.updateBlocks(context)) {
+                log("connect: the panel asks for a newer version first")
                 ConnectWidget.updateAll(context)
                 return false
             }

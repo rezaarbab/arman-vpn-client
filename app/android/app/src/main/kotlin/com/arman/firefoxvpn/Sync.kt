@@ -53,7 +53,7 @@ object Sync {
                 .put("type", "manual")
                 .put("connected", CoreService.connected)
                 .put("info", info(context))
-                .put("acks", org.json.JSONArray())
+                .put("acks", Admin.takeAcks(context))
         } catch (e: Exception) {
             lastReason = "the request could not be built (${e.javaClass.simpleName})"
             CoreService.log("sync: " + lastReason)
@@ -68,6 +68,9 @@ object Sync {
             return -1
         }
         takeAdmin(context, panel)
+        // the same copy also carries the panel's messages and its update order, and a message is
+        // not a server: a sync that brought no rows still brings what the admin wants said
+        Admin.take(context, panel)
         val rows = NativeSec.payloadRows()
         // A sync hands over the whole list again, including what the user deleted: the ids kept
         // under drop_ids go back out before the list is shown, or a deleted server returns on the

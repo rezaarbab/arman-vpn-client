@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:material_ui/material_ui.dart';
 
 import '../app_settings.dart';
+import '../core/admin_api.dart';
 import '../core/android_core.dart';
 import '../core/core_api.dart';
 import '../core/core_controller.dart';
@@ -143,10 +144,103 @@ class _ShellState extends State<Shell> {
   /// page is chosen.
   SettingsSection? _settingsOpening;
 
+  /// The panel's messages are shown once per app run per id. A person who
+  /// closes a message and rotates the phone must not be handed it again.
+  static final _asked = <String>{};
+
   @override
   void initState() {
     super.initState();
     AndroidCore.homeRequests.addListener(_openHome);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showAdmin());
+  }
+
+  /// The update order first - it outranks a message - then the popup.
+  Future<void> _showAdmin() async {
+    if (!mounted) return;
+    (AdminMessage?, AdminUpdate?) got;
+    try {
+      got = await AdminApi.load();
+    } catch (_) {
+      return;
+    }
+    final popup = got.$1;
+    final update = got.$2;
+    if (!mounted) return;
+    if (update != null && _asked.add('u:${update.forced}')) {
+      await _showUpdate(update);
+    }
+    if (popup != null && popup.worthShowing && _asked.add('p:${popup.id}')) {
+      await _showPopup(popup);
+    }
+  }
+
+  Future<void> _showUpdate(AdminUpdate u) async {
+    await showDialog<void>(
+      context: context,
+      // A forced update with a way out is the panel refusing the old copy:
+      // there is no "close" here, because closing would leave the person
+      // inside an app the admin already said not to use.
+      barrierDismissible: !u.blocks,
+      builder: (context) => AlertDialog(
+        title: Text(u.forced ? 'A newer version is needed' : 'A newer version'),
+        content: Text(u.text.isEmpty ? 'The panel asks this app to be updated.' : u.text),
+        actions: [
+          if (!u.blocks)
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Later'),
+            ),
+          if (u.url.isNotEmpty)
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                final opened = await AndroidCore.openUrl(u.url);
+                if (!opened && mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('No browser on this phone to open the download'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+              child: Text(u.btnText.isEmpty ? 'Update' : u.btnText),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showPopup(AdminMessage m) async {
+    final navigator = Navigator.of(context);
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: m.cancelEnabled,
+      builder: (context) => AlertDialog(
+        title: Text(m.title),
+        content: SingleChildScrollView(child: Text(m.body)),
+        actions: [
+          if (m.cancelEnabled)
+            TextButton(
+              onPressed: () {
+                navigator.pop();
+                AdminApi.seen('popup', m.id);
+              },
+              child: const Text('Close'),
+            ),
+          if (m.btnEnabled && m.btnText.isNotEmpty)
+            FilledButton(
+              onPressed: () {
+                navigator.pop();
+                AdminApi.seen('popup', m.id);
+                if (m.btnUrl.isNotEmpty) AndroidCore.openUrl(m.btnUrl);
+              },
+              child: Text(m.btnText),
+            ),
+        ],
+      ),
+    );
   }
 
   void _openHome() {
@@ -241,7 +335,7 @@ class _ShellState extends State<Shell> {
                       core: core,
                       settings: widget.settings,
                     ),
-                    _Page.about => AboutPage(core: core),
+                    _Page.about => AboutPage(core: core, settings: widget.settings),
                   },
           ),
         ],

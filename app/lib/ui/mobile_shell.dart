@@ -8,7 +8,6 @@ import '../core/core_controller.dart';
 import '../l10n/app_localizations.dart';
 import 'about_page.dart';
 import 'format.dart';
-import 'bypass_apps_page.dart';
 import 'logs_page.dart';
 import 'overview_page.dart';
 import 'servers_page.dart';
@@ -289,11 +288,8 @@ class _SettingsListState extends State<_SettingsList> {
           l.sectionGeneral,
         ),
         row(Icons.public_rounded, l.navServers, onOpenServers),
-        row(
-          Icons.alt_route_rounded,
-          l.bypassApps,
-          () => pushBare(() => const BypassAppsPage()),
-        ),
+        // Per-app routing moved to About: the phone's General list had become
+        // the place for something a person sets once.
       ]),
       ?group(l.groupApp, [
           // The app's port and the web dashboard: computers only (a narrow
@@ -312,7 +308,7 @@ class _SettingsListState extends State<_SettingsList> {
           row(
             Icons.info_outline_rounded,
             l.navAbout,
-            () => push(l.navAbout, () => AboutPage(core: core)),
+            () => push(l.navAbout, () => AboutPage(core: core, settings: settings)),
           ),
         ]),
     ];
