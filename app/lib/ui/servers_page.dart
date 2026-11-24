@@ -75,6 +75,28 @@ class _ServersPageState extends State<ServersPage> {
     } catch (_) {}
   }
 
+  /// Servers the phone is holding back because they were removed. The number
+  /// is on the bar beside Update, because the person who deleted one and
+  /// presses Update is looking here, and not in Settings.
+  int _removed = 0;
+
+  Future<void> _loadRemoved() async {
+    try {
+      final n = await IrRowsBridge.dropCount();
+      if (_alive) setState(() => _removed = n);
+    } catch (_) {}
+  }
+
+  Future<void> _bringBack() async {
+    if (!_alive || _busy) return;
+    // undrop forgets the removals; the list then needs the rows themselves,
+    // which only an exchange with the server can hand over - which is exactly
+    // what the Update button does, so it is asked to do it.
+    await IrRowsBridge.undrop();
+    await _update();
+    _loadRemoved();
+  }
+
   Future<void> _togglePin(String id) async {
     final on = !_pins.contains(id);
     setState(() {
@@ -117,21 +139,22 @@ class _ServersPageState extends State<ServersPage> {
     if (!_asked.contains(row.id) && !_locating.contains(row.id)) {
       return const SizedBox.shrink();
     }
-    return Container(
-      width: 40,
-      height: 28,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Text(
-        '?',
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w800,
+    // Asked, and no country came back: the same failure mark the ping pill
+    // uses, so "nobody knows yet" and "it could not be had" are not the same
+    // empty space. He asked for a flag that says "this one is broken".
+    final err = theme.colorScheme.error;
+    return Tooltip(
+      message: 'No country could be had from this server',
+      child: Container(
+        width: 40,
+        height: 28,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: err.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(7),
+          border: Border.all(color: err.withValues(alpha: 0.45)),
         ),
+        child: Icon(Icons.error_outline_rounded, size: 15, color: err),
       ),
     );
   }
@@ -209,6 +232,7 @@ class _ServersPageState extends State<ServersPage> {
       });
       _loadPings();
       _loadPins();
+      _loadRemoved();
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _pollLive());
     });
   }
@@ -417,9 +441,9 @@ class _ServersPageState extends State<ServersPage> {
         title: Text(one ? 'Remove this server?' : 'Remove ${ids.length} dead servers?'),
         content: Text(
           one
-              ? 'It leaves the list and the stored copy, and the next sync will not bring it back.'
+              ? 'It leaves the list and the stored copy. The restore button in the bar brings it back.'
               : 'These did not answer a ping. They leave the list and the stored copy, and the next sync will not bring them back. '
-                  'If that turns out to be wrong, Settings → General can put them back.',
+                  'If that turns out to be wrong, the restore button in the bar puts them back.',
         ),
         actions: [
           TextButton(
@@ -434,8 +458,11 @@ class _ServersPageState extends State<ServersPage> {
       ),
     );
     if (ok != true || !_alive) return;
-    await _servers.dropAll(ids);
+    final did = await _servers.dropAll(ids);
     if (!_alive) return;
+    // The phone can refuse (a removal that would leave nothing). Then the list
+    // must keep showing the servers it still has, not pretend they went.
+    if (!did) return;
     setState(() {
       for (final id in ids) {
         _ping.remove(id);
@@ -445,6 +472,8 @@ class _ServersPageState extends State<ServersPage> {
         _srv.remove(id);
       }
     });
+    // so the bar learns there is now something to bring back
+    _loadRemoved();
   }
 
   /// Each row's last session, so the line is there before anything connects.
@@ -630,6 +659,14 @@ class _ServersPageState extends State<ServersPage> {
                       : const Icon(Icons.refresh_rounded),
                   _busy ? null : _update,
                 ),
+                // Only when something is being held back: the bar has no room
+                // for a button that does nothing most of the time.
+                if (_removed > 0)
+                  btn(
+                    'Bring back the $_removed removed server(s)',
+                    const Icon(Icons.restore_rounded),
+                    _busy ? null : _bringBack,
+                  ),
                 btn(
                   'Sort by ping',
                   Icon(_sortPing ? Icons.sort_rounded : Icons.sort_outlined),

@@ -88,6 +88,14 @@ class IrServers extends ChangeNotifier {
   Future<bool> dropAll(List<String> ids) async {
     if (ids.isEmpty) return true;
     final kept = await IrRowsBridge.drop(ids);
+    // -2 is the phone's own guard: a removal that would leave no server is not
+    // carried out, because the list cannot be rebuilt from a server that
+    // already handed this handset the same rows once.
+    if (kept == -2) {
+      error = 'that would leave no server at all - nothing was removed';
+      _notify();
+      return false;
+    }
     if (kept < 0) {
       error = 'the delete was refused';
       _notify();

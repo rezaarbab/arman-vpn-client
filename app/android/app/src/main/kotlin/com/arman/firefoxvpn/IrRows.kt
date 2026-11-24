@@ -73,6 +73,16 @@ object IrRows {
     fun drop(context: android.content.Context, ids: List<String>): Int {
         val clean = ids.filter { it.isNotBlank() }.distinct()
         if (clean.isEmpty()) return -1
+        // A delete that would leave nothing is refused. The rows are gone from the phone for
+        // good, and the server only hands them over again when its own list changes, so a batch
+        // judged dead in error - or a list whose ids the panel hands out again - empties the app
+        // and no amount of refreshing brings anything back.
+        val n = count()
+        val left = n - held(clean)
+        if (n > 0 && left <= 0) {
+            CoreService.log("list: the removal was refused - every server would be gone")
+            return -2
+        }
         val p = context.getSharedPreferences("blob_core", android.content.Context.MODE_PRIVATE)
         val keptList = (dropped(context).split(';').filter { it.isNotBlank() } + clean).distinct()
         val edit = p.edit().putString("drop_ids", keptList.joinToString(";"))
@@ -81,8 +91,8 @@ object IrRows {
             edit.remove("cc_$t").remove("pd_$t").remove("pi_$t").remove("stats_$t")
         }
         // a pinned row that no longer exists must not keep its mark
-        val left = pins(context).filter { !clean.contains(it) }
-        edit.putString("pins", left.joinToString(";"))
+        val stillPinned = pins(context).filter { !clean.contains(it) }
+        edit.putString("pins", stillPinned.joinToString(";"))
         edit.apply()
         val kept = NativeSec.drop(clean.joinToString(";"))
         CoreService.log(
@@ -93,6 +103,15 @@ object IrRows {
     }
 
     fun drop(context: android.content.Context, id: String): Int = drop(context, listOf(id))
+
+    /** How many of these ids the store holds right now - the ids nobody removed are not counted
+     *  as a loss, or a stale list of removals would look like the whole store. */
+    private fun held(ids: List<String>): Int {
+        val want = ids.toHashSet()
+        var got = 0
+        for (i in 0 until count()) if (id(i) in want) got++
+        return got
+    }
 
     /** The rows the user pinned, in the order he pinned them. */
     fun pins(context: android.content.Context): List<String> =
@@ -117,9 +136,18 @@ object IrRows {
 
     /** After a sync replaced the store: everything the user deleted goes out again, in one call. */
     fun reapplyDrops(context: android.content.Context) {
-        val ids = dropped(context)
+        val ids = dropped(context).split(';').filter { it.isNotBlank() }
         if (ids.isEmpty()) return
-        if (NativeSec.drop(ids) < 0) CoreService.log("list: the delete was refused")
+        val n = count()
+        if (n == 0) return
+        // The same rule as the delete: remembered removals are applied to a fresh list only as
+        // long as something is left. A list the panel handed out under the same ids as the one
+        // once marked dead would otherwise be emptied by memory alone, on every sync, forever.
+        if (held(ids) >= n) {
+            CoreService.log("list: the remembered removals would empty the list - not applied")
+            return
+        }
+        if (NativeSec.drop(ids.joinToString(";")) < 0) CoreService.log("list: the delete was refused")
     }
 
     private fun field(i: Int, which: Int): String =
