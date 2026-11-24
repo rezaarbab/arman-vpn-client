@@ -26,6 +26,7 @@ object Sync {
 
     fun run(context: Context): Int {
         lastReason = ""
+        val t0 = System.currentTimeMillis()
         CoreService.log("sync: start")
         if (!NativeSec.ready()) {
             lastReason = IrRows.gate()
@@ -72,7 +73,9 @@ object Sync {
         // under drop_ids go back out before the list is shown, or a deleted server returns on the
         // next pull and the delete means nothing.
         if (rows > 0) IrRows.reapplyDrops(context)
-        CoreService.log("sync: ${NativeSec.payloadRows()} servers")
+        // the seconds the person waited, in the one line the log keeps about a sync: without it
+        // "it took long" has no number to argue with
+        CoreService.log("sync: ${NativeSec.payloadRows()} servers in ${(System.currentTimeMillis() - t0) / 1000L}s")
         return if (rows > 0) 1 else 0
     }
 

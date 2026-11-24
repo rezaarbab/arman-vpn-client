@@ -252,12 +252,16 @@ object BlobSecure {
         return null
     }
 
-    /** the shapes a protocol answer can take when there is nothing to read: a busy edge, or a
-     *  worker older than the blob layer */
+    /** the shapes a protocol answer can take when there is nothing to read: a busy edge, the
+     *  worker's own brake, or a worker older than the blob layer */
     private fun refusedLine(status: Int): String {
         val why = NativeSec.syncReason()
         return when {
             status >= 500 -> "server busy (HTTP " + status + ") - retried once; the next sync tries again"
+            // 429 is the anti-flood brake, and the worker sends it with no body on purpose: this
+            // device asked more than its share in a few seconds. It is not a broken key and the
+            // session stays intact, so the answer to give the user is the wait, not a failure.
+            status == 429 -> "the server is pacing this device (HTTP 429) - the next sync tries again in two minutes"
             status in 200..299 -> "unexpected server response (protocol) [" + why + "]"
             else -> "server answered HTTP " + status + " and not json - old worker? [" + why + "]"
         }
