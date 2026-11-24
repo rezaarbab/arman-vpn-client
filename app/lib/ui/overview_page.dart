@@ -275,8 +275,9 @@ class _DesktopHome extends StatelessWidget {
   /// keeps the proxy running and connected.
   String get _mode => connectionModeShown(status);
 
-  /// The button: off, or on with a test that confirms the connection.
-  Future<void> _power(bool on) async {
+  /// The button: off, or on with a test that confirms the connection. The
+  /// context is the build's own - a StatelessWidget has no other.
+  Future<void> _power(bool on, BuildContext context) async {
     // The panel's switch over the whole app: the request is not sent, because a
     // button that goes to "connecting" and comes back says the tunnel failed.
     if (on && status.adminOff) {
@@ -428,7 +429,7 @@ class _DesktopHome extends StatelessWidget {
             tooltip: on ? l.tapToDisconnect : l.tapToConnect,
             // The tunnel is the only thing between the button and the phone:
             // there are no accounts to open first.
-            onPressed: () => runShowingErrors(context, () => _power(!on)),
+            onPressed: () => runShowingErrors(context, () => _power(!on, context)),
           ),
         ),
         const SizedBox(height: 10),
@@ -1068,7 +1069,7 @@ class _PhoneHome extends StatelessWidget {
   final VoidCallback? onOpenConnection;
   final VoidCallback? onOpenUpstreamProxy;
 
-  Future<void> _toggle(bool on) async {
+  Future<void> _toggle(bool on, BuildContext context) async {
     if (!on && status.adminOff) {
       _adminStopped(context);
       return;
@@ -1268,7 +1269,7 @@ class _PhoneHome extends StatelessWidget {
                   connecting: connecting,
                   tooltip: press,
                   // There are no accounts to open first: the button is the tunnel.
-                  onPressed: () => runShowingErrors(context, () => _toggle(on)),
+                  onPressed: () => runShowingErrors(context, () => _toggle(on, context)),
                 ),
               ),
               SizedBox(height: short ? 8 : 14),
