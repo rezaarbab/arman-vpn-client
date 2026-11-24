@@ -57,6 +57,12 @@ class AppSettings extends ChangeNotifier {
   /// just installed the app has nothing to look at until something arrives.
   int syncOnEntry = 1;
 
+  /// How the server list shows its categories: 0 one under another (the whole
+  /// list scrolls, the way it always was), 1 a row of names with one category
+  /// shown at a time. A phone with ten categories spends more time scrolling
+  /// names than servers.
+  int catLayout = 0;
+
   /// How a new account signs in (the accounts page's row).
   SignInMethod signInMethod = SignInMethod.api;
 
@@ -218,6 +224,8 @@ class AppSettings extends ChangeNotifier {
         s.autoPing = j['auto_ping'] != false;
         final sync = j['sync_on_entry'];
         s.syncOnEntry = sync is int && sync >= 0 && sync <= 2 ? sync : 1;
+        final catLay = j['cat_layout'];
+        s.catLayout = catLay is int && catLay >= 0 && catLay <= 1 ? catLay : 0;
         s.showAppModeSwitch = false; // the quick mode switch is gone
         s.signInMethod =
             SignInMethod.values.asNameMap()[j['signin_method']] ??
@@ -276,6 +284,7 @@ class AppSettings extends ChangeNotifier {
     bool? autoPing,
     int? syncOnEntry,
     DateTime? lowQuotaDismissedAt,
+    int? catLayout,
     String? dismissedUpdate,
     DateTime? updateCheckedAt,
     String? updateVersion,
@@ -304,6 +313,7 @@ class AppSettings extends ChangeNotifier {
     this.syncOnEntry = syncOnEntry ?? this.syncOnEntry;
     this.lowQuotaDismissedAt = lowQuotaDismissedAt ?? this.lowQuotaDismissedAt;
     this.dismissedUpdate = dismissedUpdate ?? this.dismissedUpdate;
+    this.catLayout = catLayout ?? this.catLayout;
     this.updateCheckedAt = updateCheckedAt ?? this.updateCheckedAt;
     this.updateVersion = updateVersion ?? this.updateVersion;
     this.updateUrl = updateUrl ?? this.updateUrl;
@@ -341,6 +351,7 @@ class AppSettings extends ChangeNotifier {
           'low_quota_dismissed_at': lowQuotaDismissedAt?.toIso8601String(),
           'dismissed_update': dismissedUpdate,
           'update_checked_at': updateCheckedAt?.toIso8601String(),
+          'cat_layout': catLayout,
           'update_version': updateVersion,
           'update_url': updateUrl,
           'update_details': updateDetails,

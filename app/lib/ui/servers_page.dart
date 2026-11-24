@@ -80,6 +80,10 @@ class _ServersPageState extends State<ServersPage> {
   /// presses Update is looking here, and not in Settings.
   int _removed = 0;
 
+  /// The category shown while the list wears the row layout; null until the
+  /// first group is known.
+  String? _cat;
+
   Future<void> _loadRemoved() async {
     try {
       final n = await IrRowsBridge.dropCount();
@@ -124,27 +128,31 @@ class _ServersPageState extends State<ServersPage> {
           if (_pins.contains(r.id)) r.id,
       ]);
 
-  /// The flag's slot. A row that was asked and never answered gets a mark of
-  /// its own: an empty space reads as "still loading" forever, and the honest
-  /// answer for that host is "no country could be had from it".
+  /// The flag's slot. An empty space reads as "still loading" forever, so both
+  /// answers that are not a country are said with the failure mark the ping pill
+  /// uses: the server that did not answer, and the one no country could be had
+  /// from. A row nobody asked stays empty - that one really is still unknown.
   Widget _flagSlot(IrServer row, ThemeData theme) {
     final cc = _cc[row.id];
-    if (cc != null && !_isDead(row.id)) {
+    if (_isDead(row.id)) {
+      return _flagError(theme, 'This server did not answer - no country is shown');
+    }
+    if (cc != null) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(7),
         child: SvgPicture.asset('assets/flags/$cc.svg', width: 40, height: 28),
       );
     }
-    if (_isDead(row.id)) return const SizedBox.shrink();
     if (!_asked.contains(row.id) && !_locating.contains(row.id)) {
       return const SizedBox.shrink();
     }
-    // Asked, and no country came back: the same failure mark the ping pill
-    // uses, so "nobody knows yet" and "it could not be had" are not the same
-    // empty space. He asked for a flag that says "this one is broken".
+    return _flagError(theme, 'No country could be had from this server');
+  }
+
+  Widget _flagError(ThemeData theme, String why) {
     final err = theme.colorScheme.error;
     return Tooltip(
-      message: 'No country could be had from this server',
+      message: why,
       child: Container(
         width: 40,
         height: 28,
@@ -583,6 +591,17 @@ class _ServersPageState extends State<ServersPage> {
     // carried nothing does not need a button that would do nothing.
     final anyTraffic = _live['on'] == 'true' || _stats.keys.any(_hasTraffic);
 
+    // The row layout spends 34dp on a strip of names and gives the rest of the
+    // screen to one category: ten headings stacked under each other is ten
+    // scrolls of names before a server. The chosen name falls back to the
+    // first group, so a sync that dropped it still shows servers.
+    final horizontal = widget.settings.catLayout == 1;
+    final keys = groups.keys.toList();
+    final cat = horizontal
+        ? (keys.contains(_cat) ? _cat : (keys.isEmpty ? null : keys.first))
+        : null;
+    final shown = cat == null ? groups : {cat: groups[cat]!};
+
     // One control of the page's single bar: a row of 28dp boxes. Two bars of
     // buttons above the list cost the height of three servers.
     Widget btn(String tip, Widget icon, VoidCallback? onTap) => IconButton(
@@ -726,13 +745,85 @@ class _ServersPageState extends State<ServersPage> {
               ),
             TextButton(onPressed: _servers.refresh, child: const Text('Sync now')),
           ],
-          for (final entry in groups.entries) ...[
+          if (horizontal && keys.length > 1)
+            SizedBox(
+              height: 32,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: keys.length,
+                itemBuilder: (_, i) {
+                  final k = keys[i];
+                  final on = k == cat;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () => setState(() => _cat = k),
+                      child: Container(
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          color: on
+                              ? theme.colorScheme.primary
+                                  .withValues(alpha: 0.14)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: on
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.outlineVariant,
+                          ),
+                        ),
+                        child: Text(
+                          '$k ${groups[k]!.length}',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: on
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.onSurfaceVariant,
+                            fontWeight: on
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          for (final entry in shown.entries) ...[
             const SizedBox(height: 18),
-            Text(entry.key,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: theme.colorScheme.onSurfaceVariant,
-                )),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(entry.key,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      )),
+                ),
+                // One category at a time: the whole-list button measures
+                // everything, and this one measures only the rows under this
+                // name. Small icon in the header - the list is the screen.
+                IconButton(
+                  tooltip: 'Ping ${entry.value.length} in ${entry.key}',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints.tightFor(width: 28, height: 28),
+                  iconSize: 16,
+                  icon: Icon(
+                    entry.value.any((r) => _busyIds.contains(r.id))
+                        ? Icons.hourglass_top_rounded
+                        : Icons.bolt_rounded,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  onPressed: () => _pingAll(
+                    only: [for (final r in entry.value) r.id],
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 6),
             Card(
               child: Column(

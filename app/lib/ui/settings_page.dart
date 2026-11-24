@@ -683,6 +683,16 @@ class _SettingsPageState extends State<SettingsPage> {
             (2, 'Every time', null),
           ],
         ),
+        _Choice<int>(
+          icon: Icons.view_day_outlined,
+          title: 'Show categories',
+          value: s.catLayout,
+          onChanged: (v) => s.update(catLayout: v),
+          options: const [
+            (0, 'One under another', null),
+            (1, 'In a row, one at a time', null),
+          ],
+        ),
         // The undo of a removal. A row marked dead and removed stays removed
         // through the next sync, so the list can end up thinner than the
         // person meant - and the way back has to be here, not in a file.
