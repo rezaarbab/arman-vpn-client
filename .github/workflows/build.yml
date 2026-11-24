@@ -57,6 +57,21 @@ jobs:
           fi
           printf '%s' "$KEYSTORE" | base64 -d > app/android/release.jks
           printf 'storeFile=../release.jks\nstorePassword=%s\nkeyAlias=release\nkeyPassword=%s\n' "$PASSWORD" "$PASSWORD" > app/android/key.properties
+      - name: Analyze the Dart
+        # The release build says only "the flutter process exited 1": the Dart
+        # compiler's own words go into a Gradle log the run page does not show
+        # without a token, so a bad line of Dart has been costing three cycles
+        # of guessing. The analyzer names the file, the line and the reason,
+        # and those become annotations here. It does not decide the job: a
+        # warning-level complaint must not stop an APK, and the build step is
+        # the one that judges the code.
+        continue-on-error: true
+        run: |
+          ( cd app && flutter pub get ) > /dev/null 2>&1
+          ( cd app && flutter analyze --no-pub ) 2>&1 | tee analyze.log
+          grep -E '^[[:space:]]+(error|warning)' analyze.log | head -n 30 \
+            | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::[dart]$(echo "$line" | sed 's/^ *//')"; done
+          exit 0
       - name: Build
         run: |
           # A compiler error's text is only in the run log; the lines that
@@ -103,8 +118,14 @@ jobs:
           # R8 and the packaging steps name their failure in a block no single
           # line matches; the end of the build says it.
           if [ "$status" -ne 0 ]; then
-            tail -n 40 build.log | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g' \
-              | while IFS= read -r line; do echo "::error::$line"; done
+            # One annotation per line, not one giant line: GitHub drops an
+            # annotation whose message runs long, and joining the tail into a
+            # single %0A blob is exactly that - the reason a failed Dart build
+            # has been readable only as Gradle's four summary lines.
+            awk '/^FAILURE: Build/ {f=1} f' build.log | head -n 25 \
+              | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::[why] $line"; done
+            tail -n 20 build.log | sed 's/%/%25/g' \
+              | while IFS= read -r line; do echo "::error::[tail] $line"; done
             # The annotations only carry what a grep pattern already expects, and
             # a Dart error the flutter tool prints in its own shape disappears
             # behind Gradle's summary. The job page is readable without a token,
