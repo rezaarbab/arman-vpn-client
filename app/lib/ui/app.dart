@@ -10,6 +10,7 @@ import '../core/core_controller.dart';
 import '../core/models.dart';
 import '../l10n/app_localizations.dart';
 import 'about_page.dart';
+import 'ad_dialog.dart';
 import 'announcement_panel.dart';
 import 'focus_ring.dart';
 import 'format.dart';
@@ -156,18 +157,20 @@ class _ShellState extends State<Shell> {
   }
 
   /// The update order first - it outranks a message - then the popup.
+  /// The update order first - it outranks a message - then the popup. The
+  /// advert is not shown here: it may wait for the tunnel, so it has its gate.
   Future<void> _showAdmin() async {
     if (!mounted) return;
-    (AdminMessage?, AdminUpdate?) got;
+    AdminBundle bundle;
     try {
-      got = await AdminApi.load();
+      bundle = await AdminApi.load();
     } catch (_) {
       return;
     }
-    final popup = got.$1;
-    final update = got.$2;
+    final popup = bundle.message;
+    final update = bundle.update;
     if (!mounted) return;
-    if (update != null && _asked.add('u:${update.forced}')) {
+    if (update != null && _asked.add('u:${update.forced}:${update.url}')) {
       await _showUpdate(update);
     }
     if (popup != null && popup.worthShowing && _asked.add('p:${popup.id}')) {
@@ -309,6 +312,9 @@ class _ShellState extends State<Shell> {
       final content = Column(
         children: [
           if (core.unavailable != null && status != null) const _LostBanner(),
+          // The panel's advert, if it has one: a zero-size widget that decides
+          // for itself when to open a dialog.
+          AdGate(connected: status?.proxyOn == true, stand: page),
           Expanded(
             child: status == null
                 ? _NoCore(core: core)

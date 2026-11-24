@@ -79,18 +79,65 @@ class AdminUpdate {
   }
 }
 
+/// The panel's advert: its own HTML, its own seconds, and its own answer to
+/// whether a phone that is not connected should be interrupted at all.
+class AdminAd {
+  const AdminAd({
+    required this.id,
+    required this.html,
+    required this.secs,
+    required this.after,
+    required this.left,
+  });
+
+  final String id;
+  final String html;
+
+  /// How long the close button waits. 0 means the panel left it free.
+  final int secs;
+
+  /// Only after the tunnel is up.
+  final bool after;
+  final int left;
+
+  bool get worthShowing => html.trim().isNotEmpty;
+
+  static AdminAd? fromMap(Map<Object?, Object?>? m) {
+    if (m == null || m.isEmpty) return null;
+    final id = '${m['id'] ?? ''}';
+    if (id.isEmpty) return null;
+    return AdminAd(
+      id: id,
+      html: '${m['html'] ?? ''}',
+      secs: (m['secs'] as num?)?.toInt() ?? 0,
+      after: m['after'] == true,
+      left: (m['left'] as num?)?.toInt() ?? 1,
+    );
+  }
+}
+
+/// What one sync left behind, read together so the shell asks once.
+class AdminBundle {
+  const AdminBundle(this.message, this.update, this.ad);
+
+  final AdminMessage? message;
+  final AdminUpdate? update;
+  final AdminAd? ad;
+}
+
 /// The panel's messages, and the receipt the worker waits for.
 class AdminApi {
   AdminApi._();
 
   static const _ch = MethodChannel('app/android');
 
-  static Future<(AdminMessage?, AdminUpdate?)> load() async {
+  static Future<AdminBundle> load() async {
     final m = await _ch.invokeMethod<Map<Object?, Object?>?>('irAdmin');
     final map = m ?? const <Object?, Object?>{};
-    return (
+    return AdminBundle(
       AdminMessage.fromMap(map['popup'] as Map<Object?, Object?>?),
       AdminUpdate.fromMap(map['update'] as Map<Object?, Object?>?),
+      AdminAd.fromMap(map['ad'] as Map<Object?, Object?>?),
     );
   }
 

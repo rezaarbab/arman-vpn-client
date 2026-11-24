@@ -169,6 +169,7 @@ class MainActivity : FlutterActivity() {
                     mapOf(
                         "popup" to Admin.popup(this),
                         "update" to Admin.update(this),
+                        "ad" to Admin.ad(this),
                     ),
                 )
                 "irAdminSeen" -> {

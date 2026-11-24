@@ -47,6 +47,15 @@ object Admin {
         } else {
             e.remove("update")
         }
+        // The advert rides the same reply. It is the panel's HTML, so it is kept as it arrived,
+        // and the app renders it with JavaScript off: saying something is not running code.
+        val ad = panel.optJSONObject("ad")
+        if (ad != null) {
+            e.putString("ad", ad.toString())
+            if (p.getString("ad_dismissed", "") != ad.optString("id", "")) e.remove("ad_dismissed")
+        } else {
+            e.remove("ad")
+        }
         // The dismissal belongs to one message: a new popup from the panel must not inherit the
         // silence of the last one.
         if (popup != null && p.getString("popup_dismissed", "") != popup.optString("id", "")) {
@@ -108,11 +117,32 @@ object Admin {
         return u["forced"] == true && (u["url"] as? String)?.isNotBlank() == true
     }
 
+    /** The advert the panel is offering, or nothing when it has none pending. */
+    fun ad(context: Context): Map<String, Any?> {
+        val p = prefs(context)
+        val raw = p.getString("ad", "") ?: ""
+        if (raw.isEmpty()) return emptyMap()
+        val o = try {
+            JSONObject(raw)
+        } catch (_: Exception) {
+            return emptyMap()
+        }
+        if (p.getString("ad_dismissed", "") == o.optString("id", "")) return emptyMap()
+        return mapOf(
+            "id" to o.optString("id", ""),
+            "html" to o.optString("html", ""),
+            "secs" to o.optInt("secs", 0),
+            "after" to o.optBoolean("after", false),
+            "left" to o.optInt("left", 1),
+        )
+    }
+
     /** The person answered the message: remember it for this id and promise the receipt. */
     fun dismiss(context: Context, kind: String, id: String) {
         if (id.isBlank()) return
         val e = prefs(context).edit()
         if (kind == "popup") e.putString("popup_dismissed", id)
+        if (kind == "ad") e.putString("ad_dismissed", id)
         e.apply()
         queueAck(context, kind, id)
     }
