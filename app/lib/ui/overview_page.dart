@@ -2974,7 +2974,10 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
           _cc = cc;
           _ccById[id] = cc;
         }
-        _ping = ms < 10 ? -1 : ms;
+        // Kept as it came: a negative is either "it answered nothing" or
+        // "nothing could be measured", and turning the second into the first
+        // is what made a whole list look dead. The pill only shows a figure.
+        _ping = ms;
         _msById[id] = _ping;
         if (ip.isNotEmpty) {
           _ip = ip;

@@ -61,8 +61,15 @@ object Flags {
      * the round trip took, the address it came from, and that address's country. The country and
      * the address are kept under the row's id; the delay is the caller's to keep or drop.
      *
-     * A round trip under 10 ms is a local answer, not a server's, and is reported as -1 so a
-     * dead row is never painted green.
+     * The delay comes back three ways, and telling two of them apart is the whole point:
+     *   -1  the server answered nothing on the page - it is dead
+     *   -2  nothing could be measured at all (no core started, no page read) - unknown
+     *   n   the round trip in ms
+     * Folding "could not measure" into "dead" is what emptied a list: with the tunnel up a second
+     * core sometimes cannot start, every row then looks dead, and "remove the dead ones" takes
+     * the whole store with it.
+     *
+     * A round trip under 10 ms is a local answer, not a server's, and counts as dead.
      */
     private fun readThrough(context: Context, id: String, row: Int): Triple<Int, String, String> {
         val port = port()
@@ -72,7 +79,7 @@ object Flags {
             override fun onEmitStatus(p0: Long, p1: String?): Long = 0L
         }
         val handle = runCatching { NativeSec.probeStart(row, port, quiet) }.getOrDefault(0)
-        if (handle == 0) return Triple(-1, "", "")
+        if (handle == 0) return Triple(-2, "", "")
         try {
             val t0 = System.nanoTime()
             // the library hands back only the asked-for words, in that order, ";"-separated
@@ -81,9 +88,10 @@ object Flags {
             val took = ((System.nanoTime() - t0) / 1000000L).toInt()
             val ip = parts.getOrNull(0).orEmpty().trim()
             val cc = parts.getOrNull(1).orEmpty().trim().uppercase()
-            // a round trip counts only when the page really answered through this server:
-            // a handshake that finishes without carrying anything is not a delay, and the
-            // core's own outbound measurement did report exactly that as a fine number
+            if (parts.isEmpty()) return Triple(-2, "", "")
+            // a round trip counts only when the page really answered through this server: a
+            // handshake that finishes without carrying anything is not a delay, and the core's
+            // own outbound measurement did report exactly that as a fine number
             val ms = if (cc.length != 2 || took < 10) -1 else took
             if (cc.length == 2) {
                 cache[id] = cc
@@ -139,12 +147,13 @@ object Flags {
      */
     fun delay(context: Context, id: String): Int {
         val row = rowOf(id)
-        if (row < 0) return -1
+        if (row < 0) return -2
         val ms = readThrough(context, id, row).first
+        val tail = id.take(64)
+        if (ms == -2) return -2
         // the verdict is kept both ways: -1 says "this one did not answer", and without it the
         // row looks merely unmeasured on the next visit, which is how a dead server came back
         // with a flag and a green figure beside it
-        val tail = id.take(64)
         prefs(context).edit().putInt("pd_$tail", if (ms >= 10) ms else -1).apply()
         return if (ms >= 10) ms else -1
     }

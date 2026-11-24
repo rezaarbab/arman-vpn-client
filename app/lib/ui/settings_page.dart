@@ -7,6 +7,7 @@ import '../app_settings.dart';
 import '../core/android_core.dart';
 import '../core/core_api.dart';
 import '../core/core_controller.dart';
+import '../core/ir_bridge.dart';
 import '../core/models.dart';
 import '../core/ports.dart';
 import '../core/tun_service.dart';
@@ -661,6 +662,10 @@ class _SettingsPageState extends State<SettingsPage> {
             (2, 'Every time', null),
           ],
         ),
+        // The undo of a removal. A row marked dead and removed stays removed
+        // through the next sync, so the list can end up thinner than the
+        // person meant - and the way back has to be here, not in a file.
+        const _UndropRow(),
         if (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
           _Row(
             icon: Icons.power_settings_new_rounded,
@@ -1839,6 +1844,63 @@ class _Row extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The servers this phone is holding back because they were removed, and the
+/// way to hand them back. A batch marked dead and deleted - sometimes wrongly,
+/// when the check itself could not run - thins the list for good unless the
+/// undo is somewhere a person can find it.
+class _UndropRow extends StatefulWidget {
+  const _UndropRow();
+
+  @override
+  State<_UndropRow> createState() => _UndropRowState();
+}
+
+class _UndropRowState extends State<_UndropRow> {
+  int _n = 0;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    IrRowsBridge.dropCount().then((n) {
+      if (mounted) setState(() => _n = n);
+    });
+  }
+
+  Future<void> _undo() async {
+    if (_busy || _n == 0) return;
+    // Taken before the awaits: after them the page may be gone, and the
+    // messenger is the one thing that still has to answer.
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    await IrRowsBridge.undrop();
+    // Forgetting the removals is not enough on its own: a removed row went out
+    // of the store as well, so the list has them again only when the server
+    // hands the whole set over.
+    await IrRowsBridge.refresh();
+    final back = await IrRowsBridge.count();
+    // Nothing is held back any more, so the row has done its job.
+    if (mounted) setState(() => _n = 0);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text('$back servers on the list'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_n == 0) return const SizedBox.shrink();
+    return _Row(
+      icon: Icons.restore_rounded,
+      label: 'Bring back the servers you removed',
+      value: _busy ? 'asking the server for them again' : '$_n held back',
+      onTap: _undo,
     );
   }
 }

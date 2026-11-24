@@ -46,6 +46,22 @@ object IrRows {
         context.getSharedPreferences("blob_core", android.content.Context.MODE_PRIVATE)
             .getString("drop_ids", "") ?: ""
 
+    /** How many removals the phone is holding. */
+    fun dropCount(context: android.content.Context): Int =
+        dropped(context).split(';').count { it.isNotBlank() }
+
+    /**
+     * Forget every removal, so the next sync hands the whole list back. Someone who marked a
+     * batch dead and removed it has to be able to undo that without knowing where the marks are
+     * kept - and a wrong verdict about "dead" must never be why a server is gone for good.
+     */
+    fun clearDrops(context: android.content.Context): Int {
+        val n = dropCount(context)
+        prefsFile(context).edit().remove("drop_ids").apply()
+        CoreService.log("list: $n removals forgotten")
+        return n
+    }
+
     /**
      * Take these rows out of the store, out of the sealed copy the next start reads, and out of
      * every cache that measured them. One call for the whole batch: the store is sealed again

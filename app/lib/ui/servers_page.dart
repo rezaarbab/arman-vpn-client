@@ -217,7 +217,10 @@ class _ServersPageState extends State<ServersPage> {
     _flagging = true;
     try {
       var at = 0;
-      final ids = [for (final r in _servers.rows.take(200)) r.id];
+      // the rows a person can actually see, not the whole store: a pass over
+      // hundreds of hosts is what made "update" feel like it never finished.
+      // The globe button in the bar is the one that asks for the long tail.
+      final ids = [for (final r in _servers.rows.take(60)) r.id];
       while (at < ids.length) {
         // A country is asked for with the tunnel up as well: the probe core has
         // its own local port and this app's sockets are outside the VPN by
@@ -346,9 +349,13 @@ class _ServersPageState extends State<ServersPage> {
     } catch (_) {}
   }
 
-  /// Measured, and it did not answer. Such a row shows no delay and no flag:
-  /// where its host sits is not the same as a server standing there.
-  bool _isDead(String id) => _ping.containsKey(id) && (_ping[id] ?? -1) < 10;
+  /// Measured, and it answered nothing. -2 is something else entirely - nothing
+  /// could be measured, usually because a second core would not start beside the
+  /// tunnel - and calling that dead is how a whole list ended up "removed".
+  bool _isDead(String id) => _ping[id] == -1;
+
+  /// A row nobody pinged is not dead, only unknown.
+  bool _isUnknown(String id) => !_ping.containsKey(id) || _ping[id] == -2;
 
   /// The row's own line: what the panel calls it, and after the "|" the
   /// address that an identify round found for it.
@@ -379,7 +386,8 @@ class _ServersPageState extends State<ServersPage> {
         content: Text(
           one
               ? 'It leaves the list and the stored copy, and the next sync will not bring it back.'
-              : 'These did not answer the ping. They leave the list and the stored copy, and the next sync will not bring them back.',
+              : 'These did not answer a ping. They leave the list and the stored copy, and the next sync will not bring them back. '
+                  'If that turns out to be wrong, Settings → General can put them back.',
         ),
         actions: [
           TextButton(
@@ -784,7 +792,7 @@ class _ServersPageState extends State<ServersPage> {
                               height: 14,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          else if (_ping[row.id] case final ms?)
+                          else if (_ping[row.id] case final ms? when ms != -2)
                             Tooltip(
                               message: 'Ping this server again',
                               child: InkWell(

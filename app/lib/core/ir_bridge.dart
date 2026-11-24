@@ -103,9 +103,17 @@ class IrRowsBridge {
   static Future<String> locate(String id) async =>
       await _ch.invokeMethod<String>('irLocate', {'id': id}) ?? '';
 
-  /// The rows the user marked, in the order he marked them.
+  /// The rows this run marked, in the order he marked them.
   static Future<List<String>> pins() async =>
       await _ch.invokeListMethod<String>('irPins') ?? const [];
+
+  /// How many servers the phone is holding back from the list, and forgetting
+  /// them all: the undo of a removal the user no longer wants.
+  static Future<int> dropCount() async =>
+      await _ch.invokeMethod<int>('irDropCount') ?? 0;
+
+  static Future<int> undrop() async =>
+      await _ch.invokeMethod<int>('irUndrop') ?? 0;
 
   /// Marks [id] or clears the mark; the answer is the whole list again, so the
   /// page never has to guess what the phone kept.

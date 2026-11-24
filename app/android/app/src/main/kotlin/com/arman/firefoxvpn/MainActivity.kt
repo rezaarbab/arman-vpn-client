@@ -161,6 +161,8 @@ class MainActivity : FlutterActivity() {
                 }
                 "irPicked" -> result.success(CoreService.pickedId(this))
                 "irPins" -> result.success(IrRows.pins(this))
+                "irDropCount" -> result.success(IrRows.dropCount(this))
+                "irUndrop" -> result.success(IrRows.clearDrops(this))
                 "irPin" -> result.success(
                     IrRows.pin(
                         this,
