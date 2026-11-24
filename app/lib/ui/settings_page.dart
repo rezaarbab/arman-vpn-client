@@ -124,7 +124,6 @@ bool settingOnThisPlatform(AppLocalizations l, String name) {
     l.connectOnStartup,
   };
   final androidOnly = {
-    l.speedInNotification,
     l.connectionMode,
     l.bypassApps,
   };
@@ -155,7 +154,6 @@ List<(SettingsSection, String)> settingsIndex(AppLocalizations l) => [
   (SettingsSection.general, l.language),
   (SettingsSection.general, l.sectionGeneral),
   (SettingsSection.general, l.showPublicIp),
-  (SettingsSection.general, l.speedInNotification),
   (SettingsSection.general, l.startOnBoot),
   (SettingsSection.general, l.theme),
   (SettingsSection.connection, l.connectionMode),
@@ -663,21 +661,6 @@ class _SettingsPageState extends State<SettingsPage> {
             (2, 'Every time', null),
           ],
         ),
-        if (Platform.isAndroid)
-          ValueListenableBuilder(
-            valueListenable: AndroidCore.showSpeed,
-            builder: (context, on, _) => _Row(
-              icon: Icons.speed_rounded,
-              label: l.speedInNotification,
-              child: Switch(
-                value: on,
-                onChanged: (v) => runShowingErrors(
-                  context,
-                  () => AndroidCore.setShowSpeed(v),
-                ),
-              ),
-            ),
-          ),
         if (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
           _Row(
             icon: Icons.power_settings_new_rounded,

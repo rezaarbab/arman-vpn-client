@@ -74,9 +74,12 @@ class BlobApi implements CoreApi {
   @override
   Future<void> autoConnect() => setOn(true);
 
-  /// The home page's Retry: it is the tunnel that was given up.
+  /// The home page's Retry. Nothing here: the tunnel is asked for by the
+  /// button, the tile, the widget or the notification, and this call arrives
+  /// every time the app comes to the front - which is how a disconnect from
+  /// the notification turned the VPN back on by itself a second later.
   @override
-  Future<void> retry() => setOn(true);
+  Future<void> retry() async {}
 
   @override
   Future<void> exitCore() => setOn(false);

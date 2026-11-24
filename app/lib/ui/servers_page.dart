@@ -148,7 +148,7 @@ class _ServersPageState extends State<ServersPage> {
         final chunk = <String>[];
         while (chunk.length < 3 && at < ids.length) {
           final id = ids[at++];
-          if (_cc.containsKey(id)) continue;
+          if (_cc.containsKey(id) || _isDead(id)) continue;
           if (!force && _asked.contains(id)) continue;
           chunk.add(id);
         }
@@ -268,11 +268,25 @@ class _ServersPageState extends State<ServersPage> {
     } catch (_) {}
   }
 
+  /// Measured, and it did not answer. Such a row shows no delay and no flag:
+  /// where its host sits is not the same as a server standing there.
+  bool _isDead(String id) => _ping.containsKey(id) && (_ping[id] ?? -1) < 10;
+
+  /// The row's own line: what the panel calls it, and after the "|" the
+  /// address that an identify round found for it.
+  String _noteLine(IrServer row) {
+    final base = row.note.isEmpty ? row.id : row.note;
+    final seen = _srv[row.id];
+    if (seen == null) return base;
+    final at = seen.indexOf('|');
+    return at < 0 ? base : '$base · ${seen.substring(at + 1)}';
+  }
+
   /// The rows this run measured and that did not answer. A row nobody pinged
   /// is not dead, only unknown, so it is never in this list.
   List<String> get _dead => [
         for (final r in _servers.rows)
-          if (_ping.containsKey(r.id) && _ping[r.id]! < 10) r.id,
+          if (_isDead(r.id)) r.id,
       ];
 
   /// Out of the store, out of the sealed copy, out of the caches: a deleted
@@ -565,7 +579,10 @@ class _ServersPageState extends State<ServersPage> {
                       leading: SizedBox(
                         width: 40,
                         height: 28,
-                        child: _cc[row.id] == null
+                        // a row that did not answer carries no flag either: the
+                        // lookup knows where that host sits, but no server is
+                        // standing there for this phone
+                        child: _cc[row.id] == null || _isDead(row.id)
                             ? const SizedBox.shrink()
                             : ClipRRect(
                                 borderRadius: BorderRadius.circular(7),
@@ -578,87 +595,82 @@ class _ServersPageState extends State<ServersPage> {
                       ),
                       title: Text(row.name,
                           maxLines: 1, overflow: TextOverflow.ellipsis),
-                      // The two housekeeping buttons ride the text line, not
-                      // the end: the end carries the delay, and four icons
-                      // there is what pushed the words onto a second row.
-                      subtitle: Row(
+                      // The buttons stay on the name's line; the traffic - the
+                      // longest words in the row - gets a line of its own, so
+                      // it never runs under the buttons.
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(row.note.isEmpty ? row.id : row.note,
-                                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                                // the server's own address, once it was identified
-                                if (_srv[row.id] case final seen?)
-                                  Text(
-                                    seen.split('|').length > 1
-                                        ? seen.split('|')[1]
-                                        : '',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                if (_lineFor(row.id) case final line?)
-                                  Text(
-                                    line,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: 'Identify this server',
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                            constraints:
-                                const BoxConstraints.tightFor(width: 26, height: 26),
-                            iconSize: 15,
-                            icon: _locating.contains(row.id)
-                                ? const SizedBox(
-                                    width: 12,
-                                    height: 12,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : Icon(Icons.public_rounded,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _noteLine(row),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Identify this server',
+                                visualDensity: VisualDensity.compact,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints.tightFor(
+                                    width: 26, height: 26),
+                                iconSize: 15,
+                                icon: _locating.contains(row.id)
+                                    ? const SizedBox(
+                                        width: 12,
+                                        height: 12,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2),
+                                      )
+                                    : Icon(Icons.public_rounded,
+                                        color: theme.colorScheme.onSurfaceVariant),
+                                onPressed: () => _identify(row.id),
+                              ),
+                              if (_hasTraffic(row.id))
+                                IconButton(
+                                  tooltip: 'Reset traffic',
+                                  visualDensity: VisualDensity.compact,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints.tightFor(
+                                      width: 26, height: 26),
+                                  iconSize: 15,
+                                  icon: Icon(Icons.restart_alt_rounded,
+                                      color: theme.colorScheme.onSurfaceVariant),
+                                  onPressed: () async {
+                                    await IrRowsBridge.statReset(row.id);
+                                    if (!_alive) return;
+                                    setState(() => _stats.remove(row.id));
+                                  },
+                                ),
+                              // Every row can go by hand, not only a dead one:
+                              // the ping's verdict is not always known, the wish is.
+                              IconButton(
+                                tooltip: 'Remove',
+                                visualDensity: VisualDensity.compact,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints.tightFor(
+                                    width: 26, height: 26),
+                                iconSize: 15,
+                                icon: Icon(Icons.close_rounded,
                                     color: theme.colorScheme.onSurfaceVariant),
-                            onPressed: () => _identify(row.id),
+                                onPressed: () => _remove([row.id]),
+                              ),
+                            ],
                           ),
-                          if (_hasTraffic(row.id))
-                            IconButton(
-                              tooltip: 'Reset traffic',
-                              visualDensity: VisualDensity.compact,
-                              padding: EdgeInsets.zero,
-                              constraints:
-                                  const BoxConstraints.tightFor(width: 26, height: 26),
-                              iconSize: 15,
-                              icon: Icon(Icons.restart_alt_rounded,
-                                  color: theme.colorScheme.onSurfaceVariant),
-                              onPressed: () async {
-                                await IrRowsBridge.statReset(row.id);
-                                if (!_alive) return;
-                                setState(() => _stats.remove(row.id));
-                              },
+                          if (_lineFor(row.id) case final line?)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                line,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
                             ),
-                          // Every row can go by hand, not only a dead one: the
-                          // ping's verdict is not always known, the wish is.
-                          IconButton(
-                            tooltip: 'Remove',
-                            visualDensity: VisualDensity.compact,
-                            padding: EdgeInsets.zero,
-                            constraints:
-                                const BoxConstraints.tightFor(width: 26, height: 26),
-                            iconSize: 15,
-                            icon: Icon(Icons.close_rounded,
-                                color: theme.colorScheme.onSurfaceVariant),
-                            onPressed: () => _remove([row.id]),
-                          ),
                         ],
                       ),
                       trailing: Row(
