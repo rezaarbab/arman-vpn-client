@@ -487,6 +487,7 @@ class CoreStatus {
       autoConnecting = _bool(j['auto_connecting']),
       connectPending = _bool(j['connect_pending']),
       connectFailure = _str(j['connect_failure']),
+      adminOff = _bool(j['admin_off']),
       selection = _str(j['selection']),
       selectionName = _str(j['selection_name']),
       noNetwork = _bool(j['no_network']),
@@ -554,6 +555,11 @@ class CoreStatus {
   /// Why the user's last connect was given up (a [Failure] code): it never
   /// reached Mozilla within a minute, and the proxy went off again.
   final String connectFailure;
+
+  /// The panel's command over this whole app: the operator switched it off,
+  /// so a tunnel is refused whoever asks for it. False until a sync says
+  /// otherwise - the app works for a worker that never mentions it.
+  final bool adminOff;
 
   /// The power switch follows the connect result even while the engine is
   /// still starting or stopping.

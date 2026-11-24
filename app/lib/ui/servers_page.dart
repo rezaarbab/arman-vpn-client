@@ -192,6 +192,10 @@ class _ServersPageState extends State<ServersPage> {
           IrRowsBridge.pick(id).catchError((Object _) {});
         }
         await cached;
+        // The panel's commands over this list's own behaviour are read before
+        // anything is decided: they arrive with the sync and say whether the
+        // app may measure on its own.
+        await IrRowsBridge.adminFlags();
         // how often opening the list asks the worker is the user's choice in
         // General settings; the first time is the default because a fresh
         // install has nothing to look at until something arrives
@@ -200,8 +204,8 @@ class _ServersPageState extends State<ServersPage> {
           _syncedOnce = true;
           unawaited(_update());
         }
-        if (widget.settings.autoFlags) _flagPass();
-        if (widget.settings.autoPing && _ping.isEmpty) _pingAll();
+        if (_autoFlags) _flagPass();
+        if (_autoPing && _ping.isEmpty) _pingAll();
       });
       _loadPings();
       _loadPins();
@@ -314,7 +318,9 @@ class _ServersPageState extends State<ServersPage> {
       if (!_alive) return;
       _loadStats();
       _loadCached().then((_) {
-        if (widget.settings.autoFlags) _flagPass();
+        // the panel's commands still decide: refreshing the list is the
+        // person's request, measuring it afterwards is the app's own
+        if (_autoFlags) _flagPass();
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -353,6 +359,32 @@ class _ServersPageState extends State<ServersPage> {
   /// could be measured, usually because a second core would not start beside the
   /// tunnel - and calling that dead is how a whole list ended up "removed".
   bool _isDead(String id) => _ping[id] == -1;
+
+  /// Whether the app may run the automatic pass itself. The panel's two commands
+  /// for it - on start, and for the servers this run has never seen - both have
+  /// to allow it, and a worker that says nothing ("a") leaves the choice with the
+  /// user's own switch. A button the person presses is never gated: these
+  /// commands are about what the app does on its own.
+  bool _autoFlags => _allowed(
+    IrRowsBridge.adminFlag(IrRowsBridge.adminFlagStart),
+    widget.settings.autoFlags,
+  ) &&
+      _allowed(
+        IrRowsBridge.adminFlag(IrRowsBridge.adminFlagNew),
+        widget.settings.autoFlags,
+      );
+
+  bool _autoPing => _allowed(
+    IrRowsBridge.adminFlag(IrRowsBridge.adminPingStart),
+    widget.settings.autoPing,
+  ) &&
+      _allowed(
+        IrRowsBridge.adminFlag(IrRowsBridge.adminPingNew),
+        widget.settings.autoPing,
+      );
+
+  static bool _allowed(String adm, bool user) =>
+      adm == '1' || (adm != '0' && user);
 
   /// A row nobody pinged is not dead, only unknown.
   bool _isUnknown(String id) => !_ping.containsKey(id) || _ping[id] == -2;

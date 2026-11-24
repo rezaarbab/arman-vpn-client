@@ -277,6 +277,12 @@ class _DesktopHome extends StatelessWidget {
 
   /// The button: off, or on with a test that confirms the connection.
   Future<void> _power(bool on) async {
+    // The panel's switch over the whole app: the request is not sent, because a
+    // button that goes to "connecting" and comes back says the tunnel failed.
+    if (on && status.adminOff) {
+      _adminStopped(context);
+      return;
+    }
     await core.setOn(on);
     if (on) _testAfterPowerOn(core);
   }
@@ -445,7 +451,16 @@ class _DesktopHome extends StatelessWidget {
             style: theme.textTheme.labelMedium?.copyWith(color: p.muted),
           ),
         const SizedBox(height: 8),
-        if (connected)
+        // The panel's command over the whole app comes before anything the
+        // tunnel itself can say: it is the reason there is no tunnel.
+        if (status.adminOff)
+          _ProblemBox(
+            text: 'The operator has switched this app off',
+            color: p.error,
+            icon: Icons.lock_outline_rounded,
+            tooltip: '',
+          )
+        else if (connected)
           Wrap(
             alignment: WrapAlignment.center,
             spacing: 8,
@@ -1054,6 +1069,10 @@ class _PhoneHome extends StatelessWidget {
   final VoidCallback? onOpenUpstreamProxy;
 
   Future<void> _toggle(bool on) async {
+    if (!on && status.adminOff) {
+      _adminStopped(context);
+      return;
+    }
     await core.setOn(!on);
     if (!on) _testAfterPowerOn(core);
   }
@@ -1267,7 +1286,16 @@ class _PhoneHome extends StatelessWidget {
                   style: theme.textTheme.labelMedium?.copyWith(color: p.muted),
                 ),
               const SizedBox(height: 8),
-              if (connected)
+              if (status.adminOff)
+                problem(
+                  _ProblemBox(
+                    text: 'The operator has switched this app off',
+                    color: p.error,
+                    icon: Icons.lock_outline_rounded,
+                    tooltip: '',
+                  ),
+                )
+              else if (connected)
                 Wrap(
                   alignment: WrapAlignment.center,
                   spacing: 8,
@@ -3203,4 +3231,15 @@ class _MyExitState extends State<_MyExit> {
       ),
     );
   }
+}
+
+/// The panel's command over the whole app, said once when a press is refused:
+/// the reason belongs to the operator, not to the server or the phone.
+void _adminStopped(BuildContext context) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('The operator has switched this app off'),
+      behavior: SnackBarBehavior.floating,
+    ),
+  );
 }

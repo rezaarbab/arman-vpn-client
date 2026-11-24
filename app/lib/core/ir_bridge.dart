@@ -115,6 +115,28 @@ class IrRowsBridge {
   static Future<int> undrop() async =>
       await _ch.invokeMethod<int>('irUndrop') ?? 0;
 
+  /// The panel's four server-behaviour commands, kept in the order the worker
+  /// sends them: ping on start, flags on start, ping new servers, flag new
+  /// servers. Each is "1" forced on, "0" forced off, "a" the user's own switch
+  /// - and "a" is what a worker that never mentions them leaves behind.
+  static const adminPingStart = 0;
+  static const adminFlagStart = 1;
+  static const adminPingNew = 2;
+  static const adminFlagNew = 3;
+  static List<String> _admin = const ['a', 'a', 'a', 'a'];
+
+  static Future<List<String>> adminFlags() async {
+    final v = await _ch.invokeMethod<String>('irAdmFlags') ?? '';
+    final parts = v.split(',');
+    if (parts.length == 4) _admin = parts;
+    return _admin;
+  }
+
+  /// The last answer, for a page that must not wait on a call to decide what
+  /// to do next; "a" when nothing was ever asked.
+  static String adminFlag(int which) =>
+      (which >= 0 && which < _admin.length) ? _admin[which] : 'a';
+
   /// Marks [id] or clears the mark; the answer is the whole list again, so the
   /// page never has to guess what the phone kept.
   static Future<List<String>> pin(String id, bool on) async {

@@ -127,6 +127,12 @@ class CoreService : VpnService() {
         // the gate reads the store, so it needs this context first (the
         // service can run in a process the activity never touched)
         NativeSec.giveCtx(applicationContext)
+        if (Sync.adminOff(this)) {
+            // the panel's own command reaches every handset at once, so this is
+            // not a failure of the server or of the phone
+            dropTunnel("the operator has switched this app off")
+            return
+        }
         val id = pickedId(this)
         if (id.isBlank()) {
             dropTunnel("no server picked")
@@ -566,6 +572,9 @@ class CoreService : VpnService() {
                 ),
                 "connect_pending" to false,
                 "connect_failure" to if (on) lastFailure else "",
+                // the panel's own switch over this whole app: the page says so
+                // rather than letting the button look like it failed
+                "admin_off" to Sync.adminOff(context),
                 "selection" to id,
                 "selection_name" to name,
                 "tun_supported" to true,
@@ -600,7 +609,15 @@ class CoreService : VpnService() {
         }
 
         /** Turns the VPN on; the caller has the Android permission by now. */
-        fun turnOn(context: Context) {
+        fun turnOn(context: Context): Boolean {
+            if (Sync.adminOff(context)) {
+                // refused before anything is set: a button that goes to "connecting"
+                // and comes back on its own says the tunnel failed, not that it was
+                // stopped on purpose
+                log("connect: the operator has switched this app off")
+                ConnectWidget.updateAll(context)
+                return false
+            }
             lastFailure = ""
             wantOn = true
             on = true
@@ -616,6 +633,7 @@ class CoreService : VpnService() {
             }
             QuickTile.refresh(context)
             ConnectWidget.updateAll(context)
+            return true
         }
 
         fun turnOff(context: Context) {

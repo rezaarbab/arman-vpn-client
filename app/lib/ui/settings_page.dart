@@ -239,10 +239,29 @@ class _SettingsPageState extends State<SettingsPage> {
 
   CoreController get _core => widget.core;
 
+  /// The panel's commands over the list's own behaviour, so a switch the
+  /// operator has already decided is shown as decided.
+  List<String> _adm = const ['a', 'a', 'a', 'a'];
+
   @override
   void initState() {
     super.initState();
     _load();
+    IrRowsBridge.adminFlags().then((v) {
+      if (mounted) setState(() => _adm = v);
+    });
+  }
+
+  /// One of the four commands, by index; "a" when the worker never spoke.
+  String _admAt(int i) => i < _adm.length ? _adm[i] : 'a';
+
+  /// What to say under a switch the operator, not the user, has set.
+  String? _admNote(int startIdx, int newIdx, bool user) {
+    final forced = (_admAt(startIdx) == '1' || _admAt(newIdx) == '1') && !user;
+    final off = _admAt(startIdx) == '0' || _admAt(newIdx) == '0';
+    if (forced) return 'the operator runs this';
+    if (off) return 'the operator stopped this';
+    return null;
   }
 
   @override
@@ -635,6 +654,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _Row(
           icon: Icons.flag_outlined,
           label: 'Fetch flags automatically',
+          value: _admNote(1, 3, s.autoFlags),
           child: Switch(
             value: s.autoFlags,
             onChanged: (v) => s.update(autoFlags: v),
@@ -643,6 +663,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _Row(
           icon: Icons.bolt_outlined,
           label: 'Measure pings automatically',
+          value: _admNote(0, 2, s.autoPing),
           child: Switch(
             value: s.autoPing,
             onChanged: (v) => s.update(autoPing: v),

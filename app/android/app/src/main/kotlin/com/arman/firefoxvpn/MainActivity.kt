@@ -163,6 +163,8 @@ class MainActivity : FlutterActivity() {
                 "irPins" -> result.success(IrRows.pins(this))
                 "irDropCount" -> result.success(IrRows.dropCount(this))
                 "irUndrop" -> result.success(IrRows.clearDrops(this))
+                // the panel's four behaviour commands, as the app has them kept
+                "irAdmFlags" -> result.success(Sync.adminFlags(this))
                 "irPin" -> result.success(
                     IrRows.pin(
                         this,

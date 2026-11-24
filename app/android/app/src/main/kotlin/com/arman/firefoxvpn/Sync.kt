@@ -17,6 +17,9 @@ import org.json.JSONObject
 // Gradle's configure step has failed alone twice; the code below is unchanged.
 object Sync {
 
+    /** The panel's four server-behaviour commands, in the order they are kept. */
+    private val ADMIN_ORDER = listOf("ping_start", "flag_start", "auto_ping_new", "auto_flag_new")
+
     /** Why the last sync failed, as both the page and the log show it; "" for none. */
     @Volatile
     var lastReason: String = ""
@@ -63,6 +66,7 @@ object Sync {
             CoreService.log("sync: " + lastReason + " [step=" + NativeSec.errInfo() + "]")
             return -1
         }
+        takeAdmin(context, panel)
         val rows = NativeSec.payloadRows()
         // A sync hands over the whole list again, including what the user deleted: the ids kept
         // under drop_ids go back out before the list is shown, or a deleted server returns on the
@@ -71,6 +75,44 @@ object Sync {
         CoreService.log("sync: ${NativeSec.payloadRows()} servers")
         return if (rows > 0) 1 else 0
     }
+
+    /**
+     * The two panel commands that are about the app rather than a server: whether the operator
+     * lets this app run at all, and how the list should behave on its own.
+     *
+     * Both fail open. A worker that says nothing about them - an older deploy, or a payload
+     * trimmed to the point of absence - must leave the app working, because the cost of reading
+     * a missing field as "off" is every handset in the country losing the tunnel at once.
+     */
+    private fun takeAdmin(context: Context, panel: JSONObject) {
+        val p = context.getSharedPreferences("blob_core", Context.MODE_PRIVATE)
+        // "enabled" is absent only from a worker that predates the command; a present false is the
+        // operator's own switch, and a blocked handset is handed the same false
+        val off = if (panel.has("enabled")) !panel.optBoolean("enabled", true) else false
+        val was = p.getInt("adm_off", 0) == 1
+        if (off != was) CoreService.log(if (off) "admin: this app is switched off" else "admin: the app is back on")
+        val pf = panel.optJSONObject("pflags")
+        val flags = ADMIN_ORDER.joinToString(",") { k ->
+            when (pf?.optString(k, "auto")) {
+                "1" -> "1"
+                "0" -> "0"
+                // "auto" is the panel's own word for "the user's switch decides", and so is a
+                // field this worker never sent: neither may quietly turn a feature off
+                else -> "a"
+            }
+        }
+        p.edit().putInt("adm_off", if (off) 1 else 0).putString("adm_pf", flags).apply()
+    }
+
+    /** Whether the operator has stopped this app from running its tunnel. */
+    fun adminOff(context: Context): Boolean =
+        context.getSharedPreferences("blob_core", Context.MODE_PRIVATE).getInt("adm_off", 0) == 1
+
+    /** The four behaviour commands, "1" forced on, "0" forced off, "a" the user's own switch,
+     *  in the order: ping on start, flags on start, ping new servers, flag new servers. */
+    fun adminFlags(context: Context): String =
+        context.getSharedPreferences("blob_core", Context.MODE_PRIVATE)
+            .getString("adm_pf", "a,a,a,a") ?: "a,a,a,a"
 
     /**
      * ANDROID_ID is per handset and signing key and survives a reinstall, so one phone stays one
