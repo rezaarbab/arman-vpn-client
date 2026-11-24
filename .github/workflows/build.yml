@@ -105,6 +105,22 @@ jobs:
           if [ "$status" -ne 0 ]; then
             tail -n 40 build.log | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g' \
               | while IFS= read -r line; do echo "::error::$line"; done
+            # The annotations only carry what a grep pattern already expects, and
+            # a Dart error the flutter tool prints in its own shape disappears
+            # behind Gradle's summary. The job page is readable without a token,
+            # so the compiler's own lines go there too: the file, the line, the
+            # words - which is the difference between fixing something and
+            # guessing at it three times.
+            {
+              echo "### what the compiler actually said"
+              echo ""
+              echo '```'
+              grep -nE "Error: |error:|^\s+[0-9]+.*expected|\.dart:[0-9]+:[0-9]+" build.log | head -n 50
+              echo "--- the 40 lines before the first failure ---"
+              grep -nE "^> Task .*FAILED|Error: |Execution failed" build.log | head -n 3
+              awk '/Error: |^> Task .*FAILED/{f=1} f{print} END{}' build.log | head -n 60
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
           exit "$status"
       - name: Remove the key
