@@ -42,11 +42,16 @@ object Flags {
         return out
     }
 
-    /** Everything already measured, id -> ms. Under 10 ms is a local answer, not a server. */
+    /**
+     * Everything already measured, id -> ms, with -1 for a row that was measured and did not
+     * answer. A figure between 0 and 9 is a local answer, not a server's, and is not served.
+     */
     fun allDelays(context: Context): Map<String, Int> {
         val out = HashMap<String, Int>()
         for ((k, v) in prefs(context).all) {
-            if (k.startsWith("pd_") && v is Int && v >= 10) out[k.removePrefix("pd_")] = v
+            if (k.startsWith("pd_") && v is Int && (v == -1 || v >= 10)) {
+                out[k.removePrefix("pd_")] = v
+            }
         }
         return out
     }
@@ -132,15 +137,13 @@ object Flags {
         } else {
             readThrough(context, id, row).first
         }
-        // a row that did not answer has no delay: the number an earlier round left here is
-        // what made a dead server look alive with a green figure beside it
+        // the verdict is kept, both ways: -1 says "this one did not answer", and
+        // without it the row looks merely unknown on the next visit - which is
+        // how a dead server came back with a flag and a green number beside it
         val tail = id.take(64)
-        if (ms >= 10) {
-            prefs(context).edit().putInt("pd_$tail", ms).apply()
-        } else {
-            prefs(context).edit().remove("pd_$tail").apply()
-        }
-        return if (ms < 10) -1 else ms
+        val kept = if (ms >= 10) ms else -1
+        prefs(context).edit().putInt("pd_$tail", kept).apply()
+        return kept
     }
 
     /**
