@@ -222,6 +222,24 @@ object Flags {
         )
     }
 
+    /**
+     * Whether a plain HTTP request still gets somewhere **through the tunnel**.
+     *
+     * Asked of the tunnel's own socks port, because the app's direct sockets are outside
+     * its own VPN by design: a direct test measures the carrier's port-80 policy and calls
+     * that the app's rule - which is a verdict the person cannot act on.
+     *
+     * The library returns nothing in two different cases and names which one happened, so a
+     * page that answered without the trace fields still counts as "got through".
+     */
+    fun tunnelHttpReaches(): Boolean {
+        val got = runCatching { NativeSec.probe("http://www.cloudflare.com/cdn-cgi/trace", "ip;loc", TUNNEL_SOCKS) }
+            .getOrNull()
+        if (got != null) return true
+        val why = runCatching { NativeSec.errInfo() }.getOrDefault("")
+        return why.contains("page:no-keys")
+    }
+
     fun mine(context: Context, ask: Boolean): Map<String, Any?> {
         val p = prefs(context)
         val out = HashMap<String, Any?>()

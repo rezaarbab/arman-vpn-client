@@ -2,9 +2,6 @@ package com.arman.firefoxvpn
 
 import android.content.Context
 import ir.v2rayng.compose.core.NativeSec
-import java.net.HttpURLConnection
-import java.net.InetAddress
-import java.net.URL
 
 /**
  * The person's own privacy switches, and the checks that prove them.
@@ -92,33 +89,17 @@ object Privacy {
             )
         }
 
-        // 2. is plain HTTP refused? asked of an address, so the test leaks no name of its own
+        // 2. is plain HTTP refused? asked through the tunnel, so the answer is about the
+        // rule the app set and not about what the carrier does with port 80
         if (hard) {
-            val open = reachesPlainHttp()
+            val open = runCatching { Flags.tunnelHttpReaches() }.getOrDefault(false)
             out["httpBlocked"] = !open
             CoreService.log(
-                if (!open) "privacy: plain http is refused"
-                else "privacy: plain http still gets through",
+                if (!open) "privacy: plain http is refused by the tunnel"
+                else "privacy: plain http still gets through the tunnel",
             )
         }
         return out
-    }
-
-    /**
-     * A direct HTTP request to a well-known address. With the hardening rules in the config
-     * it must fail; without them it gets a redirect back. 1.1.1.1 answers in a millisecond,
-     * so a timeout here really means refused rather than slow.
-     */
-    private fun reachesPlainHttp(): Boolean = try {
-        val conn = URL("http://1.1.1.1/").openConnection() as HttpURLConnection
-        conn.connectTimeout = 4000
-        conn.readTimeout = 4000
-        conn.instanceFollowRedirects = false
-        val code = conn.responseCode
-        conn.disconnect()
-        code > 0
-    } catch (_: Exception) {
-        false
     }
 
     /** A name for the settings line: the second hop as the list shows it, never its address. */
@@ -128,12 +109,5 @@ object Privacy {
         val row = runCatching { NativeSec.rowOf(id) }.getOrDefault(-1)
         if (row < 0) return ""
         return runCatching { NativeSec.payloadText(row, 1) }.getOrDefault("")
-    }
-
-    /** Whether the handset can see its own DNS at all - a sanity line, not a leak test. */
-    fun resolverAlive(): Boolean = try {
-        InetAddress.getAllByName("cloudflare.com").isNotEmpty()
-    } catch (_: Exception) {
-        false
     }
 }

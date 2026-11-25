@@ -53,8 +53,8 @@ class PrivacyChecks {
               : 'Second hop: NOT carrying - the traffic still exits through the first server',
         if (httpBlocked != null)
           httpBlocked!
-              ? 'Plain HTTP: refused'
-              : 'Plain HTTP: still gets through',
+              ? 'Plain HTTP: refused by the tunnel'
+              : 'Plain HTTP: still gets through the tunnel',
       ];
 }
 
