@@ -118,54 +118,34 @@ jobs:
           # R8 and the packaging steps name their failure in a block no single
           # line matches; the end of the build says it.
           if [ "$status" -ne 0 ]; then
-            # One annotation per line, not one giant line: GitHub drops an
-            # annotation whose message runs long, and joining the tail into a
-            # single %0A blob is exactly that - the reason a failed Dart build
-            # has been readable only as Gradle's four summary lines.
-            awk '/^FAILURE: Build/ {f=1} f' build.log | head -n 25 \
-              | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::[why] $line"; done
-            tail -n 20 build.log | sed 's/%/%25/g' \
-              | while IFS= read -r line; do echo "::error::[tail] $line"; done
-            # The compiler's own lines sit ABOVE the failure block, not under it:
-            # "See log for more details" is Gradle declining to repeat them, and the
-            # annotations kept stopping at the summary. The 45 lines before the first
-            # failed task are the compile output - the difference between a named
-            # missing import and a build cycle spent guessing.
-            first=$(grep -n '^> Task .* FAILED' build.log | head -n 1 | cut -d: -f1)
-            if [ -n "$first" ]; then
-              start=$(( first - 45 ))
-              [ "$start" -lt 1 ] && start=1
-              sed -n "${start},${first}p" build.log | sed 's/%/%25/g' \
-                | grep -E '^(e: |w: |e |> |error|\s*(e|error):)|\.kt:|\.dart:|\.c:' \
-                | head -n 30 | while IFS= read -r line; do echo "::error::[above] $line"; done
-            fi
-            # The compiler's own words are not anchored to a task line at all: the
-            # Kotlin daemon writes them as "e: file:///...: (12:9) Unresolved
-            # reference", and every pattern above was anchored to the start of a
-            # line, so a real error was invisible while its summary was printed
-            # twice. Ask for the words themselves, wherever they sit.
-            grep -E '(^|[^A-Za-z])e: |Unresolved reference|expected (expression|type|argument)|Syntax error|Overload resolution' build.log \
-              | head -n 20 | sed 's/%/%25/g' | cut -c1-260 \
-              | while IFS= read -r line; do echo "::error::[compiler] $line"; done
-            # "See log for more details" is not a taunt: the Kotlin daemon writes the
-            # real errors to its own file and prints nothing else to the console. Read
-            # that file, or a Kotlin mistake stays invisible behind a summary.
-            kfile=$(find . -path '*kotlin/errors/errors-*.log' -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -n 1 | cut -d" " -f2-)
-            if [ -n "$kfile" ] && [ -f "$kfile" ]; then
-              echo "::error::[kfile] found $kfile"
-              head -n 25 "$kfile" | sed 's/%/%25/g' | cut -c1-260 \
-                | while IFS= read -r line; do echo "::error::[kotlin] $line"; done
-            else
-              echo "::error::[kfile] no kotlin/errors log - asking the compiler itself"
-              # The last resort that is actually the first one: run the Kotlin task
-              # alone, with --info, and take its own words. The dependencies are
-              # already resolved by the build that just failed, so this is a compile,
-              # not a download.
-              ( cd app/android && timeout 900 ./gradlew :app:compileReleaseKotlin \
-                  --offline --console=plain --info 2>&1 | grep -E '^e: |Unresolved reference|Overload resolution|expected |error:' \
-                  | head -n 25 | sed 's/%/%25/g' | cut -c1-260 \
-                  | while IFS= read -r line; do echo "::error::[ask] $line"; done )
-            fi
+            # Every command here ends with "|| true": the step runs under bash -e,
+            # and a grep that finds nothing exits 1 - which killed this whole block
+            # at its first miss and left the job with nothing but Gradle's summary.
+            # A diagnostic that dies when the answer is not what it expected is the
+            # reason three builds were spent on a line the compiler had already said.
+            emit() { sed 's/%/%25/g' | cut -c1-260 | while IFS= read -r l; do echo "::error::$1 $l"; done; }
+            echo "::error::[mark] 1 why"
+            { awk '/^FAILURE: Build/ {f=1} f' build.log | head -n 25 | emit "[why]"; } || true
+            echo "::error::[mark] 2 tail"
+            { tail -n 20 build.log | emit "[tail]"; } || true
+            echo "::error::[mark] 3 compiler words anywhere"
+            { grep -E 'e: |Unresolved reference|Overload resolution|Syntax error|expected ' build.log | head -n 20 | emit "[compiler]"; } || true
+            echo "::error::[mark] 4 daemon log"
+            {
+              kfile=$(find . -path '*kotlin/errors/errors-*.log' 2>/dev/null | head -n 1)
+              if [ -n "$kfile" ]; then
+                echo "::error::[kfile] found $kfile"
+                head -n 25 "$kfile" | emit "[kotlin]"
+              else
+                echo "::error::[kfile] absent"
+              fi
+            } || true
+            echo "::error::[mark] 5 asking the kotlin task"
+            {
+              cd app/android && timeout 600 ./gradlew :app:compileReleaseKotlin \
+                --offline --console=plain 2>&1 | head -n 120 | emit "[ask]"
+            } || true
+            echo "::error::[mark] 6 done"
             # The annotations only carry what a grep pattern already expects, and
             # a Dart error the flutter tool prints in its own shape disappears
             # behind Gradle's summary. The job page is readable without a token,
