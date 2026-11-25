@@ -695,6 +695,18 @@ class _SettingsPageState extends State<SettingsPage> {
             (1, 'In a row, one at a time', null),
           ],
         ),
+        // Where the layers show. On a phone that connects every day the exit and the dropped
+        // hop belong on the first screen; on another, the first screen is one button and no more.
+        _Choice<int>(
+          icon: Icons.dashboard_outlined,
+          title: 'The privacy layers',
+          value: s.privHome ? 1 : 0,
+          onChanged: (v) => s.update(privHome: v == 1),
+          options: const [
+            (0, 'Only here, in settings', null),
+            (1, 'Also on the home page', null),
+          ],
+        ),
         const _PrivacyBlock(),
         // The undo of a removal. A row marked dead and removed stays removed
         // through the next sync, so the list can end up thinner than the
@@ -3269,8 +3281,15 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
   String _chainId = '';
   String _chainName = '';
   bool _inStore = true;
+  bool _dropped = false;
   List<String> _result = const [];
   bool _busy = false;
+
+  /// The read that has to land before a write may go out, and whether the person touched the
+  /// screen while it was still in flight. Without these two the widget could save the empty
+  /// chain id it was born with, and a second server chosen days ago vanished - "it reset itself".
+  Future<void>? _reading;
+  bool _touched = false;
 
   @override
   void initState() {
@@ -3278,26 +3297,34 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool over = false}) async {
+    final f = PrivacyApi.get();
+    _reading = f;
     try {
-      final s = await PrivacyApi.get();
-      if (mounted) {
+      final s = await f;
+      if (mounted && (over || !_touched)) {
         setState(() {
           _on = s.on;
           _chainId = s.chainId;
           _chainName = s.chainName;
           _inStore = s.chainInStore;
+          _dropped = s.dropped;
         });
       }
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      if (_reading == f) _reading = null;
+    }
   }
 
   /// What the screen shows is what the phone stored, not what the tap intended: the
   /// row is read back after every write, so a choice that did not land cannot be
   /// displayed as if it had.
   Future<void> _save() async {
+    _touched = true;
+    await _reading;
     await PrivacyApi.set(on: _on, chainId: _chainId);
-    await _load();
+    await _load(over: true);
   }
 
   /// The servers this phone holds, by name. The address is never asked for here: the
@@ -3412,6 +3439,20 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
           onTap: _pick,
           child: const Icon(Icons.chevron_right_rounded),
         ),
+        if (_dropped && _chainId.isNotEmpty)
+          _Row(
+            icon: Icons.link_off_rounded,
+            label: 'This hop is out of the dial',
+            value: 'nothing arrived through it, so the dial went on one server - '
+                'tap to ask for it again, used on the next connect',
+            onTap: () async {
+              // writing the same choice back is the re-arm: the library clears the drop with it
+              setState(() => _dropped = false);
+              await PrivacyApi.set(on: _on, chainId: _chainId);
+              await _load(over: true);
+            },
+            child: const Icon(Icons.refresh_rounded),
+          ),
         _Row(
           icon: Icons.fact_check_outlined,
           label: 'Run the checks',

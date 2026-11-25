@@ -173,6 +173,7 @@ class MainActivity : FlutterActivity() {
                             "on" to Privacy.on(this),
                             "chainId" to Privacy.chainId(this),
                             "chainName" to Privacy.chainName(this),
+                            "dropped" to Privacy.dropped(this),
                             "chainInStore" to (Privacy.chainId(this).isNotEmpty() &&
                                 runCatching {
                                     ir.v2rayng.compose.core.NativeSec.rowOf(Privacy.chainId(this))

@@ -63,6 +63,10 @@ class AppSettings extends ChangeNotifier {
   /// names than servers.
   int catLayout = 0;
 
+  /// Whether the privacy layers show on the home page. It is two switches and a measurement,
+  /// and some phones want the card at the top while others only ever want it in Settings.
+  bool privHome = false;
+
   /// How a new account signs in (the accounts page's row).
   SignInMethod signInMethod = SignInMethod.api;
 
@@ -226,6 +230,7 @@ class AppSettings extends ChangeNotifier {
         s.syncOnEntry = sync is int && sync >= 0 && sync <= 2 ? sync : 1;
         final catLay = j['cat_layout'];
         s.catLayout = catLay is int && catLay >= 0 && catLay <= 1 ? catLay : 0;
+        s.privHome = j['priv_home'] == true;
         s.showAppModeSwitch = false; // the quick mode switch is gone
         s.signInMethod =
             SignInMethod.values.asNameMap()[j['signin_method']] ??
@@ -285,6 +290,7 @@ class AppSettings extends ChangeNotifier {
     int? syncOnEntry,
     DateTime? lowQuotaDismissedAt,
     int? catLayout,
+    bool? privHome,
     String? dismissedUpdate,
     DateTime? updateCheckedAt,
     String? updateVersion,
@@ -314,6 +320,7 @@ class AppSettings extends ChangeNotifier {
     this.lowQuotaDismissedAt = lowQuotaDismissedAt ?? this.lowQuotaDismissedAt;
     this.dismissedUpdate = dismissedUpdate ?? this.dismissedUpdate;
     this.catLayout = catLayout ?? this.catLayout;
+    this.privHome = privHome ?? this.privHome;
     this.updateCheckedAt = updateCheckedAt ?? this.updateCheckedAt;
     this.updateVersion = updateVersion ?? this.updateVersion;
     this.updateUrl = updateUrl ?? this.updateUrl;
@@ -352,6 +359,7 @@ class AppSettings extends ChangeNotifier {
           'dismissed_update': dismissedUpdate,
           'update_checked_at': updateCheckedAt?.toIso8601String(),
           'cat_layout': catLayout,
+          'priv_home': privHome,
           'update_version': updateVersion,
           'update_url': updateUrl,
           'update_details': updateDetails,

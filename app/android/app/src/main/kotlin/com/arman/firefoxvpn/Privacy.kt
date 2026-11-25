@@ -87,9 +87,26 @@ object Privacy {
         prefs(context).edit()
             .putString("privacy", if (enabled) "1" else "0")
             .putString("chain_id", id)
+            // whoever touches this choice again gets the hop back: a drop is the tunnel's
+            // judgement about one dial, not a permanent verdict on the server
+            .putString("chain_off", "0")
             .commit()
         if (was != enabled) CoreService.log(if (enabled) "privacy: on" else "privacy: off")
         if (wasChain != id) CoreService.log("privacy: second hop changed")
+    }
+
+    /**
+     * The hop the tunnel took out of its own dial because nothing arrived through it. The choice
+     * stays stored and the page still names the server: this only says the next dial goes without.
+     * Writing the choice again - which the page's tap does - is what puts it back.
+     */
+    fun dropped(context: Context): Boolean =
+        prefs(context).getString("chain_off", "0") == "1"
+
+    /** Take the chosen hop out of the next dial. The tunnel says why in its own log line. */
+    fun dropHop(context: Context) {
+        if (dropped(context)) return
+        prefs(context).edit().putString("chain_off", "1").commit()
     }
 
     /**
@@ -122,10 +139,14 @@ object Privacy {
         out["tunnelSilent"] = seen.silent
         out["pageRefuses"] = seen.picky
         out["notMeasurable"] = seen.refusedEverywhere
+        out["chainDropped"] = dropped(context)
         out["httpBlocked"] = if (hard && seen.httpJudged) !seen.httpArrives else null
         if (id.isEmpty()) {
             out["chainCarries"] = false
             say("chain: no second server chosen")
+        } else if (dropped(context)) {
+            out["chainCarries"] = false
+            say("chain: the tunnel took this hop out of the dial - the choice is still yours")
         } else if (row < 0) {
             out["chainCarries"] = false
             say("chain: the second server is no longer in the list")
@@ -201,6 +222,9 @@ object Privacy {
             else -> "other"
         }
         lines.add("stored privacy = $stored, running config = ${if (shape.isEmpty()) "never dialed" else shape}")
+        if (dropped(context)) {
+            lines.add("the tunnel dropped the second hop after it carried nothing - the dial is on one server, the choice is kept")
+        }
         if (on(context) && shape.isNotEmpty() && !shape.startsWith("1")) {
             lines.add("the switch is on but the running tunnel was built without it - dial again")
         }

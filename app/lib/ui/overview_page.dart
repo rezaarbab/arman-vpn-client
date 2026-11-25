@@ -10,6 +10,7 @@ import '../app_settings.dart';
 import '../core/android_core.dart';
 import '../core/core_controller.dart';
 import '../core/ir_bridge.dart';
+import '../core/privacy_api.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../core/updates.dart';
 import '../core/models.dart';
@@ -1747,6 +1748,12 @@ class _PhoneHome extends StatelessWidget {
                 const SizedBox(height: 12),
                 _HomeData(status: status, palette: p, onTap: onOpenServers),
               ],
+              // The layers on the first screen, for the phones whose person wants the exit and
+              // the measurement without walking into Settings to find out they were off.
+              if (settings.privHome) ...[
+                const SizedBox(height: 12),
+                _PrivacyHomeCard(palette: p),
+              ],
             ],
           ),
         ),
@@ -3233,4 +3240,147 @@ void _adminStopped(BuildContext context) {
       behavior: SnackBarBehavior.floating,
     ),
   );
+}
+
+/// The privacy layers on the first screen, when General settings says to show them: which
+/// server the traffic leaves through, whether the tunnel is using it, and the same measurement
+/// the settings page prints - so a person at home sees a dropped hop instead of a silent one.
+class _PrivacyHomeCard extends StatefulWidget {
+  const _PrivacyHomeCard({required this.palette});
+
+  final _HomePalette palette;
+
+  @override
+  State<_PrivacyHomeCard> createState() => _PrivacyHomeCardState();
+}
+
+class _PrivacyHomeCardState extends State<_PrivacyHomeCard> {
+  PrivacyState? _s;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final s = await PrivacyApi.get();
+      if (mounted) setState(() => _s = s);
+    } catch (_) {
+    }
+  }
+
+  /// Asked of the network, answered in a sheet: the card stays two lines and the whole story
+  /// is one tap away, which is what the same button does in Settings.
+  Future<void> _test() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    List<String> lines;
+    try {
+      final r = await PrivacyApi.test();
+      final d = await PrivacyApi.debug();
+      lines = [...r.lines(), ...d];
+    } catch (_) {
+      lines = const ['the check could not run'];
+    }
+    if (!mounted) return;
+    setState(() => _busy = false);
+    await _load();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('What the network answered'),
+        content: SizedBox(
+          width: 460,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final line in lines)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: SelectableText(line, textDirection: TextDirection.ltr),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final p = widget.palette;
+    final s = _s;
+    final exit = s == null
+        ? 'reading what this phone stores'
+        : s.chainId.isEmpty
+            ? 'one server - it sees every site you open'
+            : s.dropped
+                ? '${_named(s)} - out of the dial: it carried nothing'
+                : s.chainInStore
+                    ? 'out through ${_named(s)}'
+                    : 'that server is no longer in the list';
+    return _HomeCard(
+      palette: p,
+      compact: true,
+      child: Row(
+        children: [
+          Icon(Icons.shield_outlined, color: p.muted, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Privacy',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: p.muted,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  exit,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  s == null
+                      ? ''
+                      : 'hiding names and plain traffic: ${s.on ? 'on' : 'off'}',
+                  style: theme.textTheme.bodySmall?.copyWith(color: p.muted),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: _busy ? null : _test,
+            tooltip: 'Run the checks',
+            icon: _busy
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.fact_check_outlined),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The chosen hop by name, or by what it is when the list no longer has a name for it.
+  static String _named(PrivacyState s) =>
+      s.chainName.isEmpty ? 'the chosen second server' : s.chainName;
 }

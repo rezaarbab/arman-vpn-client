@@ -10,6 +10,7 @@ class PrivacyState {
     required this.chainId,
     required this.chainName,
     required this.chainInStore,
+    required this.dropped,
   });
 
   final bool on;
@@ -18,6 +19,10 @@ class PrivacyState {
 
   /// The chosen second hop is no longer in the store (a sync replaced the list).
   final bool chainInStore;
+
+  /// The tunnel took this hop out of its dial because nothing arrived through it. The choice is
+  /// still stored: the server is named, and said to be unused, instead of quietly gone.
+  final bool dropped;
 }
 
 class PrivacyChecks {
@@ -43,6 +48,9 @@ class PrivacyChecks {
   /// Whose address the tunnel exits with: `hop2` means the chain carries, `hop1` means the second
   /// hop is in the config and not in use, `other` means neither, and "" means nothing was measured.
   String get exitIs => '${raw['exitIs'] ?? ''}';
+
+  /// The tunnel took the hop out of its dial because nothing arrived through it.
+  bool get chainDropped => raw['chainDropped'] == true;
 
   /// `hardening-chain-chosen`, as the library wrote it for the tunnel that is running.
   String get running => '${raw['running'] ?? ''}';
@@ -73,6 +81,8 @@ class PrivacyChecks {
           'Second hop: that server is no longer in the list - pick it again'
         else if (!connected)
           'Second hop: connect first - nothing can be measured while it is off'
+        else if (chainDropped)
+          'Second hop: the tunnel dropped it - nothing arrived through it, your choice is kept'
         else if (notMeasurable)
           'Second hop: the pages refuse this network from both sides - nothing can be measured now'
         else if (tunnelSilent)
@@ -111,6 +121,7 @@ class PrivacyApi {
       chainId: '${v['chainId'] ?? ''}',
       chainName: '${v['chainName'] ?? ''}',
       chainInStore: v['chainInStore'] == true,
+      dropped: v['dropped'] == true,
     );
   }
 

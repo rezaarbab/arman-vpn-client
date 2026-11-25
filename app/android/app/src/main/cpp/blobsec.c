@@ -3316,6 +3316,9 @@ static const sblob g_sb[] = {
     { 9, {
         0x55, 0xb5, 0x17, 0x52, 0xd9, 0x2f, 0x85, 0xf1, 0x7b
     } },   /* cfg_shape */   /* index 276, round trip "cfg_shape" */
+    { 9, {
+        0xb2, 0x06, 0x6a, 0xc1, 0x2b, 0xbd, 0x10, 0x7a, 0xdf
+    } },   /* chain_off */   /* index 277, round trip "chain_off" */
 };
 
 /** the decoded text of one entry; valid until six more have been decoded */
@@ -6233,6 +6236,9 @@ static void sb_direct(sbuf *s) {
    page never reached the config - the two files are different and nothing said so */
 #define CORE_PREF sb(275)
 #define SHAPE_KEY sb(276)
+/* the hop the person chose, taken out of the dial without forgetting it: a second server
+   that carried nothing is dropped for the next dial and stays listed as their choice */
+#define CHAIN_OFF_KEY sb(277)
 static int g_priv = 0;
 static const char *g_tag = "proxy";
 static const char *g_dialer = NULL;
@@ -6559,6 +6565,14 @@ static jstring cfg_text(JNIEnv *env, jclass cls, jint row, jint mode, jint socks
     chainId[0] = 0;
     char *cid = (mode == 0) ? pref_get_in(env, CORE_PREF, CHAIN_KEY) : NULL;
     if (cid != NULL) { snprintf(chainId, sizeof(chainId), "%s", cid); free(cid); }
+    int chosen = chainId[0] != 0;
+    /* a hop the tunnel dropped is taken out of this dial and left alone as the person's choice:
+       the shape reports what was chosen and what was used, which is how a drop is visible */
+    char *off = (mode == 0) ? pref_get_in(env, CORE_PREF, CHAIN_OFF_KEY) : NULL;
+    if (off != NULL) {
+        if (off[0] == '1') chainId[0] = 0;
+        free(off);
+    }
     char *hop1 = NULL;
     /* the second hop is its own choice: it does not wait for the name-hiding rules, and
        turning those off must not silently turn the chain off as well */
@@ -6603,11 +6617,11 @@ static jstring cfg_text(JNIEnv *env, jclass cls, jint row, jint mode, jint socks
     free(hop1);
     /* what the tunnel that is about to start was really built with: three digits, no address,
        no id, no name - and the only way a page can say "the switch is on but the config does
-       not carry it" instead of guessing at it */
+       not carry it" instead of guessing at it. The third digit is the person's choice, which
+       outlives the dial when the tunnel dropped that hop: chosen-used-picked are three facts. */
     if (mode == 0) {
         char shape[24];
-        snprintf(shape, sizeof(shape), "%d-%d-%d", g_priv, g_dialer != NULL ? 1 : 0,
-                 chainId[0] != 0 ? 1 : 0);
+        snprintf(shape, sizeof(shape), "%d-%d-%d", g_priv, g_dialer != NULL ? 1 : 0, chosen ? 1 : 0);
         pref_put_in(env, CORE_PREF, SHAPE_KEY, shape, 0);
     }
     g_dialer = NULL;

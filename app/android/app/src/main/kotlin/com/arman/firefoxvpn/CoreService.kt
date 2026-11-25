@@ -681,8 +681,10 @@ class CoreService : VpnService() {
             Thread {
                 when (Privacy.carries(ctx)) {
                     0 -> {
-                        Privacy.set(ctx, Privacy.on(ctx), "")
-                        log("chain: nothing arrived through the second hop - the tunnel is back on one server")
+                        // the choice stays stored: the dial goes without it and the page says why,
+                        // which is the difference between a hop that failed and a setting lost
+                        Privacy.dropHop(ctx)
+                        log("chain: nothing arrived through the second hop - it is out of the dial, the choice is kept")
                         reconnect(ctx)
                     }
                     1 -> log("chain: a page arrived through the second hop")
