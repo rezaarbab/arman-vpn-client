@@ -3360,6 +3360,9 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
     if (mounted) setState(() {});
   }
 
+  /// The verdicts, and under them every line the full debug produced: the page
+  /// through the tunnel, the page outside it, each hop measured on its own, and
+  /// what the running config was built with. One tap, no guessing left.
   Future<void> _test() async {
     if (_busy) return;
     setState(() {
@@ -3368,9 +3371,10 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
     });
     try {
       final r = await PrivacyApi.test();
-      if (mounted) setState(() => _result = r.lines());
-    } catch (e) {
-      if (mounted) setState(() => _result = ['the check could not run']);
+      final d = await PrivacyApi.debug();
+      if (mounted) setState(() => _result = [...r.lines(), ...d]);
+    } catch (_) {
+      if (mounted) setState(() => _result = const ['the check could not run']);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -3411,6 +3415,7 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
         _Row(
           icon: Icons.fact_check_outlined,
           label: 'Run the checks',
+          value: 'every answer the network can give, printed here',
           child: _busy
               ? const SizedBox(
                   width: 16,
@@ -3423,7 +3428,11 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
         for (final line in _result)
           Padding(
             padding: const EdgeInsets.only(left: 44, top: 2),
-            child: Text(line, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+            child: SelectableText(
+              line,
+              style: theme.textTheme.bodySmall?.copyWith(color: muted),
+              textDirection: TextDirection.ltr,
+            ),
           ),
       ],
     );

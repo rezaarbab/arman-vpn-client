@@ -165,17 +165,21 @@ class MainActivity : FlutterActivity() {
                 "irUndrop" -> result.success(IrRows.clearDrops(this))
                 // the panel's own switch over the whole app, in both directions
                 "irAdmFlags" -> result.success(Sync.adminFlags(this))
-                "blobPrivacy" -> result.success(
-                    mapOf(
-                        "on" to Privacy.on(this),
-                        "chainId" to Privacy.chainId(this),
-                        "chainName" to Privacy.chainName(this),
-                        "chainInStore" to (Privacy.chainId(this).isNotEmpty() &&
-                            runCatching {
-                                ir.v2rayng.compose.core.NativeSec.rowOf(Privacy.chainId(this))
-                            }.getOrDefault(-1) >= 0),
-                    ),
-                )
+                "blobPrivacy" -> {
+                    // healed before it is read, so the page and the library see the same thing
+                    Privacy.migrate(this)
+                    result.success(
+                        mapOf(
+                            "on" to Privacy.on(this),
+                            "chainId" to Privacy.chainId(this),
+                            "chainName" to Privacy.chainName(this),
+                            "chainInStore" to (Privacy.chainId(this).isNotEmpty() &&
+                                runCatching {
+                                    ir.v2rayng.compose.core.NativeSec.rowOf(Privacy.chainId(this))
+                                }.getOrDefault(-1) >= 0),
+                        ),
+                    )
+                }
                 "blobPrivacySet" -> {
                     Privacy.set(
                         this,
@@ -185,6 +189,8 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "blobPrivacyTest" -> inAsk(result) { Privacy.test(this) }
+                // every question the network can answer, in one tap
+                "blobPrivacyDebug" -> inAsk(result) { Privacy.debug(this) }
                 "irAdmin" -> result.success(
                     mapOf(
                         "popup" to Admin.popup(this),

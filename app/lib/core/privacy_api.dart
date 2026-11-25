@@ -99,4 +99,11 @@ class PrivacyApi {
     final m = await _ch.invokeMethod<Map<Object?, Object?>?>('blobPrivacyTest');
     return PrivacyChecks(m ?? const <Object?, Object?>{});
   }
+
+  /// Every question the network can answer, as lines: the page through the tunnel, the
+  /// page outside it, each hop measured alone, and what the running config was built with.
+  static Future<List<String>> debug() async {
+    final l = await _ch.invokeListMethod<String>('blobPrivacyDebug');
+    return l ?? const [];
+  }
 }
