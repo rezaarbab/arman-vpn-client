@@ -23,6 +23,9 @@ object Flags {
 
     private const val TRACE = "https://www.cloudflare.com/cdn-cgi/trace"
 
+    /** A page on other infrastructure, for the times the trace page is the one refusing. */
+    private const val ELSEWHERE = "https://ipinfo.io/json"
+
     /** The socks inbound of the tunnel's own config, set by the library when it builds it. */
     private const val TUNNEL_SOCKS = 10890
 
@@ -213,31 +216,19 @@ object Flags {
      */
     fun tunnelExit(): Map<String, String> {
         val raw = runCatching { NativeSec.probe(TRACE, "ip;loc", TUNNEL_SOCKS) }.getOrDefault("")
-        if (raw.isEmpty()) return mapOf("ip" to "", "cc" to "", "answered" to "0")
-        val parts = raw.split(';')
+        // One host refusing an exit is that host, not the tunnel: the trace page closes TLS to some
+        // server addresses, and a card that stops at its no says "unknown exit" while the phone
+        // browses fine. The same question, asked of a page on other infrastructure, answers.
+        val got = if (raw.isEmpty()) runCatching {
+            NativeSec.probe(ELSEWHERE, "ip;country", TUNNEL_SOCKS)
+        }.getOrDefault("") else raw
+        if (got.isEmpty()) return mapOf("ip" to "", "cc" to "", "answered" to "0")
+        val parts = got.split(';')
         return mapOf(
             "ip" to parts.getOrNull(0).orEmpty().trim(),
             "cc" to parts.getOrNull(1).orEmpty().trim().uppercase(),
             "answered" to "1",
         )
-    }
-
-    /**
-     * Whether a plain HTTP request still gets somewhere **through the tunnel**.
-     *
-     * Asked of the tunnel's own socks port, because the app's direct sockets are outside
-     * its own VPN by design: a direct test measures the carrier's port-80 policy and calls
-     * that the app's rule - which is a verdict the person cannot act on.
-     *
-     * The library returns nothing in two different cases and names which one happened, so a
-     * page that answered without the trace fields still counts as "got through".
-     */
-    fun tunnelHttpReaches(): Boolean {
-        val got = runCatching { NativeSec.probe("http://www.cloudflare.com/cdn-cgi/trace", "ip;loc", TUNNEL_SOCKS) }
-            .getOrNull()
-        if (got != null) return true
-        val why = runCatching { NativeSec.errInfo() }.getOrDefault("")
-        return why.contains("page:no-keys")
     }
 
     fun mine(context: Context, ask: Boolean): Map<String, Any?> {

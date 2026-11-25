@@ -19,9 +19,26 @@ import ir.v2rayng.compose.core.NativeSec
  */
 object Privacy {
     private const val TRACE = "https://www.cloudflare.com/cdn-cgi/trace"
+    private const val TRACE_KEYS = "ip;loc"
+
+    /**
+     * A page that does not live on the first page's infrastructure, and answers the same one word.
+     *
+     * One host saying no is that host, not the tunnel: without a second opinion a refusal by the
+     * trace page reads exactly like a tunnel carrying nothing - which is what this page did when it
+     * answered "Connection closed by peer" while the phone was browsing through the same tunnel.
+     */
+    private const val ELSEWHERE = "https://ipinfo.io/json"
+    private const val ELSEWHERE_KEYS = "ip;country"
+
+    /** The same host on the open port the hardening is supposed to refuse. */
+    private const val PLAINTEXT = "http://ipinfo.io/json"
 
     /** The socks inbound of the tunnel's own config. */
     private const val TUNNEL_SOCKS = 10890
+
+    /** A page this run had no reason to ask about, kept apart from a page that was asked and refused. */
+    private const val NOT_ASKED = "not asked"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences("blob_core", Context.MODE_PRIVATE)
@@ -98,37 +115,49 @@ object Privacy {
             say("privacy: not connected - nothing to measure yet")
             return out
         }
-        val probe = askTunnel()
-        out["exitKnown"] = probe.ip.isNotEmpty()
-        out["tunnelSilent"] = probe.ip.isEmpty()
+        val seen = look(hard)
         val row = if (id.isNotEmpty()) runCatching { NativeSec.rowOf(id) }.getOrDefault(-1) else -1
         out["chainInStore"] = row >= 0
+        out["exitKnown"] = seen.exit.isNotEmpty()
+        out["tunnelSilent"] = seen.silent
+        out["pageRefuses"] = seen.picky
+        out["notMeasurable"] = seen.refusedEverywhere
+        out["httpBlocked"] = if (hard && seen.httpJudged) !seen.httpArrives else null
         if (id.isEmpty()) {
             out["chainCarries"] = false
             say("chain: no second server chosen")
         } else if (row < 0) {
             out["chainCarries"] = false
             say("chain: the second server is no longer in the list")
-        } else if (probe.ip.isEmpty()) {
+        } else if (seen.exit.isEmpty()) {
             out["chainCarries"] = false
-            say("chain: not measured - the tunnel did not answer the page")
+            say(
+                if (seen.refusedEverywhere) "chain: not measured - the pages refuse even outside the tunnel"
+                else "chain: not measured - nothing arrives through the tunnel",
+            )
         } else {
             val hopIp = runCatching {
                 NativeSec.locate(row).split(';').getOrNull(0).orEmpty().trim()
             }.getOrDefault("")
-            val carried = hopIp.isNotEmpty() && probe.ip == hopIp
+            val carried = hopIp.isNotEmpty() && seen.exit == hopIp
             out["chainCarries"] = carried
+            // Whichever hop the exit belongs to, when the answer says: "the first one" is a chain
+            // that was built and then not used, "the second one" is a chain that works, and
+            // "neither" is something else again - three different faults that used to print as one.
+            out["exitIs"] = if (hopIp.isNotEmpty() && seen.exit == hopIp) "hop2" else hopOwner(context, seen.exit)
+            if (seen.picky) say("exit: measured on the second page - the trace page refuses this exit")
             say(
                 if (carried) "chain: the traffic leaves through the second server"
-                else "chain: the first server is still the exit",
+                else "chain: the exit is not the second server",
             )
         }
         if (hard) {
-            val open = runCatching { Flags.tunnelHttpReaches() }.getOrDefault(false)
-            out["httpBlocked"] = !open
             say(
-                if (!open) "privacy: plain http is refused by the tunnel"
-                else "privacy: plain http still gets through the tunnel",
+                when {
+                    !seen.httpJudged -> "privacy: plain http not measured - the page does not answer outside the tunnel"
+                    !seen.httpArrives -> "privacy: plain http is refused by the tunnel"
+                    else -> "privacy: plain http still gets through the tunnel"
+                },
             )
         }
         return out
@@ -137,11 +166,11 @@ object Privacy {
     /**
      * Everything that can be asked of the network in one tap, each line one fact.
      *
-     * The order is the diagnosis: is the page reachable at all from this phone, does it
-     * answer through the tunnel, does the first hop answer on its own, does the second.
-     * Four questions, and the combination says whether the chain is broken, whether the
-     * chosen second server is dead, or whether nothing is broken and the page is just
-     * blocked on this network. No address, no id, no name is ever written here.
+     * The order is the diagnosis: does the tunnel answer the trace page, does it answer a page on
+     * other infrastructure, does the trace page answer from this phone at all, and does the tunnel
+     * refuse the open port. Those four separate the three things that used to look identical: the
+     * chain broken, the exit refused by one host, and a network that blocks the pages.
+     * No address, no id, no name is ever written here.
      */
     fun debug(context: Context): List<String> {
         val lines = ArrayList<String>()
@@ -156,23 +185,27 @@ object Privacy {
         if (on(context) && shape.isNotEmpty() && !shape.startsWith("1")) {
             lines.add("the switch is on but the running tunnel was built without it - dial again")
         }
-
-        val through = askTunnel()
-        lines.add(
-            "through the tunnel: " + if (through.answered) "answered" else "did not answer" +
-                " [${through.step}]",
-        )
-        val direct = askDirect()
-        lines.add(
-            "outside the tunnel: " + if (direct.answered) "answered" else "did not answer" +
-                " [${direct.step}]",
-        )
-        if (!direct.answered) {
-            lines.add("the page does not answer even directly - this network blocks it, the tunnel cannot be judged")
+        if (!CoreService.on) {
+            lines.add("not connected - there is no tunnel to ask")
             return lines
         }
-        if (direct.answered && !through.answered) {
-            lines.add("the page answers outside the tunnel and not inside it - the tunnel is not carrying traffic")
+
+        val seen = look(on(context))
+        lines.add("trace page, through the tunnel: " + said(seen.trace))
+        lines.add("another page, through the tunnel: " + said(seen.other))
+        if (seen.outside.step != NOT_ASKED) {
+            lines.add("trace page, outside the tunnel: " + said(seen.outside))
+        }
+        lines.add(
+            when {
+                seen.arrives -> "the tunnel carries: a page arrived through it"
+                seen.refusedEverywhere ->
+                    "the pages refuse even outside the tunnel - this network refuses them, nothing can be judged"
+                else -> "nothing arrives through the tunnel and the page answers outside it - the tunnel carries nothing"
+            },
+        )
+        if (seen.arrives && !seen.trace.answered) {
+            lines.add("the trace page refuses what the tunnel exits with, another page accepts it - one host saying no is that host")
         }
 
         val picked = CoreService.pickedId(context)
@@ -190,13 +223,29 @@ object Privacy {
                     NativeSec.locate(row).split(';').getOrNull(0).orEmpty().trim()
                 }.getOrDefault("")
                 lines.add(
-                    if (hopIp.isEmpty()) "second server: its address could not be resolved"
-                    else "second server: resolves, and the tunnel exit ${if (through.ip == hopIp) "is" else "is not"} that address",
+                    when {
+                        hopIp.isEmpty() -> "second server: its address could not be resolved"
+                        seen.exit.isEmpty() -> "second server: it resolves, and no exit could be measured to compare with"
+                        seen.exit == hopIp -> "the exit the tunnel answers with is the second server's address"
+                        hopOwner(context, seen.exit) == "hop1" ->
+                            "the exit is the FIRST server's address: the chain is in the config and not in use"
+                        else -> "the exit is neither resolved address - the chain cannot be confirmed from it"
+                    },
                 )
             }
         }
-        if (shape.split('-').getOrNull(1) == "1" && !through.answered && direct.answered) {
+        if (shape.split('-').getOrNull(1) == "1" && seen.silent) {
             lines.add("the chain is in the config and the tunnel carries nothing - turn the second hop off until this is fixed")
+        }
+        if (on(context)) {
+            lines.add(
+                when {
+                    !seen.httpJudged ->
+                        "plain http through the tunnel: not measurable - the page does not answer outside it either"
+                    seen.httpArrives -> "plain http through the tunnel: arrives - the refusal is not happening"
+                    else -> "plain http through the tunnel: refused - the rule works"
+                },
+            )
         }
         return lines
     }
@@ -207,18 +256,91 @@ object Privacy {
         else -> "$ms ms"
     }
 
+    /**
+     * Whether the address the tunnel exits with is the first server's, as one word and no address:
+     * "hop1" when it is, "other" when it is not or the server no longer resolves, "" when nothing
+     * was measured. A chain that is in the config and not in use shows here and nowhere else.
+     */
+    private fun hopOwner(context: Context, exit: String): String {
+        if (exit.isEmpty()) return ""
+        val picked = CoreService.pickedId(context)
+        if (picked.isBlank()) return "other"
+        val row = runCatching { NativeSec.rowOf(picked) }.getOrDefault(-1)
+        if (row < 0) return "other"
+        val ip = runCatching {
+            NativeSec.locate(row).split(';').getOrNull(0).orEmpty().trim()
+        }.getOrDefault("")
+        return if (ip.isNotEmpty() && ip == exit) "hop1" else "other"
+    }
+
     private class Probe(val ip: String, val answered: Boolean, val step: String) {
         override fun toString(): String = ip
     }
 
+    /** A question this run had no reason to ask: the lines that read it say so instead of "no". */
+    private val notAsked = Probe("", false, NOT_ASKED)
+
+    /**
+     * What the tunnel and the phone answered, kept as answers rather than as conclusions: every
+     * verdict in the two functions above is a reading of these, so a line names the one thing it saw.
+     */
+    private class Sight(
+        val trace: Probe,
+        val other: Probe,
+        val outside: Probe,
+        val plain: Probe,
+        val plainOutside: Probe,
+    ) {
+        /** The address the traffic leaves with, from whichever page answered. */
+        val exit: String get() = if (trace.ip.isNotEmpty()) trace.ip else other.ip
+
+        /** Something came back through the tunnel, whichever page it was. */
+        val arrives: Boolean get() = trace.answered || other.answered
+
+        /** The trace page said no and a page on other infrastructure said yes. */
+        val picky: Boolean get() = other.answered && !trace.answered
+
+        /** The pages answer from the phone and none of them answer through the tunnel. */
+        val silent: Boolean get() = !arrives && outside.answered
+
+        /** The pages say no from the phone too: this network refuses them and nothing can be judged. */
+        val refusedEverywhere: Boolean get() = !arrives && !outside.answered && outside.step != NOT_ASKED
+
+        /** Whether the open port was asked of both sides, which is all that makes the next line mean anything. */
+        val httpJudged: Boolean get() = plain.step != NOT_ASKED && plainOutside.step != NOT_ASKED
+
+        val httpArrives: Boolean get() = plain.answered
+    }
+
+    /**
+     * Ask, in the order that lets an early yes cancel the questions that only a no would need.
+     * Each of these costs up to eleven seconds of the ask thread, so a working tunnel pays for two
+     * pages and a broken one pays for the controls that prove whose fault it is.
+     */
+    private fun look(askHttp: Boolean): Sight {
+        val trace = askTunnel()
+        val other = if (trace.answered) notAsked else ask(ELSEWHERE, ELSEWHERE_KEYS, TUNNEL_SOCKS)
+        val arrived = trace.answered || other.answered
+        val outside = if (arrived) notAsked else askDirect()
+        val plain =
+            if (arrived && askHttp) ask(PLAINTEXT, ELSEWHERE_KEYS, TUNNEL_SOCKS) else notAsked
+        val plainOutside =
+            if (plain.step != NOT_ASKED && !plain.answered) ask(PLAINTEXT, ELSEWHERE_KEYS, 0) else notAsked
+        return Sight(trace, other, outside, plain, plainOutside)
+    }
+
+    /** One page's answer, in the words a person reads: what came back, or where it stopped. */
+    private fun said(p: Probe): String =
+        if (p.step == NOT_ASKED) "not asked" else if (p.answered) "answered" else "did not answer [${p.step}]"
+
     /** The trace page, asked through the tunnel's own socks port. */
-    private fun askTunnel(): Probe = ask(TUNNEL_SOCKS)
+    private fun askTunnel(): Probe = ask(TRACE, TRACE_KEYS, TUNNEL_SOCKS)
 
     /** The same page, asked outside the tunnel - the control that makes the other answer mean something. */
-    private fun askDirect(): Probe = ask(0)
+    private fun askDirect(): Probe = ask(TRACE, TRACE_KEYS, 0)
 
-    private fun ask(port: Int): Probe {
-        val raw = runCatching { NativeSec.probe(TRACE, "ip;loc", port) }.getOrDefault("")
+    private fun ask(url: String, keys: String, port: Int): Probe {
+        val raw = runCatching { NativeSec.probe(url, keys, port) }.getOrDefault("")
         val step = runCatching { NativeSec.errInfo() }.getOrDefault("")
         val ip = if (raw.isEmpty()) "" else raw.split(';').getOrNull(0).orEmpty().trim()
         return Probe(ip, ip.isNotEmpty(), step.ifBlank { if (ip.isEmpty()) "no-answer" else "ok" })
