@@ -164,6 +164,25 @@ object Privacy {
     }
 
     /**
+     * Whether the tunnel is carrying, as one number: 1 when a page arrived through it, 0 when
+     * nothing arrived and the same page answers outside it, -1 when the pages refuse the phone
+     * too and there is nothing to conclude.
+     *
+     * The tunnel asks this itself a moment after it comes up, because a second hop that cannot
+     * carry leaves the person with no internet at all, and that is not a state to wait for a
+     * button press in.
+     */
+    fun carries(context: Context): Int {
+        if (!CoreService.on) return -1
+        val seen = look(false)
+        return when {
+            seen.arrives -> 1
+            seen.outside.answered -> 0
+            else -> -1
+        }
+    }
+
+    /**
      * Everything that can be asked of the network in one tap, each line one fact.
      *
      * The order is the diagnosis: does the tunnel answer the trace page, does it answer a page on

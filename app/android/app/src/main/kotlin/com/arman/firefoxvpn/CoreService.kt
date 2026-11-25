@@ -78,6 +78,7 @@ class CoreService : VpnService() {
             connected = true
             lastFailure = ""
             log("connected")
+            judgeChain()
             notifier.notify(NOTIFICATION_ID, notification().build())
             ConnectWidget.updateAll(this)
             QuickTile.refresh(this)
@@ -217,6 +218,7 @@ class CoreService : VpnService() {
     fun teardown() {
         keepStats()
         connected = false
+        chainJudged = false
         connectedSince = 0L
         dialStarted = 0L
         main.removeCallbacks(stats)
@@ -341,6 +343,7 @@ class CoreService : VpnService() {
         keepStats()
         closeTun()
         connected = false
+        chainJudged = false
         main.removeCallbacks(stats)
         main.removeCallbacks(onCoreUp)
         try {
@@ -657,6 +660,35 @@ class CoreService : VpnService() {
             context.stopService(Intent(context, CoreService::class.java))
             QuickTile.refresh(context)
             ConnectWidget.updateAll(context)
+        }
+
+        /**
+         * A second hop that cannot carry leaves the phone with no internet, and the only proof
+         * that it did is a page asked through the tunnel. So the tunnel asks, once per session,
+         * and gives up the hop rather than staying up over an empty path.
+         *
+         * Judged once and never again for that hop: dropping it re-dials with no second server,
+         * and a second judgement could drop a working hop on one slow page.
+         */
+        @Volatile
+        private var chainJudged = false
+
+        private fun judgeChain() {
+            val ctx = instance ?: return
+            if (Privacy.chainId(ctx).isEmpty()) return
+            if (chainJudged) return
+            chainJudged = true
+            Thread {
+                when (Privacy.carries(ctx)) {
+                    0 -> {
+                        Privacy.set(ctx, Privacy.on(ctx), "")
+                        log("chain: nothing arrived through the second hop - the tunnel is back on one server")
+                        reconnect(ctx)
+                    }
+                    1 -> log("chain: a page arrived through the second hop")
+                    else -> log("chain: not judged - the pages do not answer from this network either")
+                }
+            }.start()
         }
 
         /** A different server: the tunnel goes down and up again on the new pick. */
