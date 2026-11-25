@@ -126,6 +126,19 @@ jobs:
               | sed 's/%/%25/g' | while IFS= read -r line; do echo "::error::[why] $line"; done
             tail -n 20 build.log | sed 's/%/%25/g' \
               | while IFS= read -r line; do echo "::error::[tail] $line"; done
+            # The compiler's own lines sit ABOVE the failure block, not under it:
+            # "See log for more details" is Gradle declining to repeat them, and the
+            # annotations kept stopping at the summary. The 45 lines before the first
+            # failed task are the compile output - the difference between a named
+            # missing import and a build cycle spent guessing.
+            first=$(grep -n '^> Task .* FAILED' build.log | head -n 1 | cut -d: -f1)
+            if [ -n "$first" ]; then
+              start=$(( first - 45 ))
+              [ "$start" -lt 1 ] && start=1
+              sed -n "${start},${first}p" build.log | sed 's/%/%25/g' \
+                | grep -E '^(e: |w: |e |> |error|\s*(e|error):)|\.kt:|\.dart:|\.c:' \
+                | head -n 30 | while IFS= read -r line; do echo "::error::[above] $line"; done
+            fi
             # The annotations only carry what a grep pattern already expects, and
             # a Dart error the flutter tool prints in its own shape disappears
             # behind Gradle's summary. The job page is readable without a token,

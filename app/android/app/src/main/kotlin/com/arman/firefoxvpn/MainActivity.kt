@@ -171,7 +171,9 @@ class MainActivity : FlutterActivity() {
                         "chainId" to Privacy.chainId(this),
                         "chainName" to Privacy.chainName(this),
                         "chainInStore" to (Privacy.chainId(this).isNotEmpty() &&
-                            runCatching { NativeSec.rowOf(Privacy.chainId(this)) }.getOrDefault(-1) >= 0),
+                            runCatching {
+                                ir.v2rayng.compose.core.NativeSec.rowOf(Privacy.chainId(this))
+                            }.getOrDefault(-1) >= 0),
                     ),
                 )
                 "blobPrivacySet" -> {

@@ -1,6 +1,7 @@
 package com.arman.firefoxvpn
 
 import android.content.Context
+import ir.v2rayng.compose.core.NativeSec
 import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.URL
