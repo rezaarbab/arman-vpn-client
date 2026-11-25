@@ -165,6 +165,24 @@ class MainActivity : FlutterActivity() {
                 "irUndrop" -> result.success(IrRows.clearDrops(this))
                 // the panel's own switch over the whole app, in both directions
                 "irAdmFlags" -> result.success(Sync.adminFlags(this))
+                "blobPrivacy" -> result.success(
+                    mapOf(
+                        "on" to Privacy.on(this),
+                        "chainId" to Privacy.chainId(this),
+                        "chainName" to Privacy.chainName(this),
+                        "chainInStore" to (Privacy.chainId(this).isNotEmpty() &&
+                            runCatching { NativeSec.rowOf(Privacy.chainId(this)) }.getOrDefault(-1) >= 0),
+                    ),
+                )
+                "blobPrivacySet" -> {
+                    Privacy.set(
+                        this,
+                        call.argument<Boolean>("on") == true,
+                        call.argument<String>("chainId") ?: "",
+                    )
+                    result.success(null)
+                }
+                "blobPrivacyTest" -> inAsk(result) { Privacy.test(this) }
                 "irAdmin" -> result.success(
                     mapOf(
                         "popup" to Admin.popup(this),

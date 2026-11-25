@@ -8,6 +8,7 @@ import '../core/android_core.dart';
 import '../core/core_api.dart';
 import '../core/core_controller.dart';
 import '../core/ir_bridge.dart';
+import '../core/privacy_api.dart';
 import '../core/models.dart';
 import '../core/ports.dart';
 import '../core/tun_service.dart';
@@ -697,6 +698,7 @@ class _SettingsPageState extends State<SettingsPage> {
             (1, 'In a row, one at a time', null),
           ],
         ),
+        const _PrivacyBlock(),
         // The undo of a removal. A row marked dead and removed stays removed
         // through the next sync, so the list can end up thinner than the
         // person meant - and the way back has to be here, not in a file.
@@ -3247,6 +3249,182 @@ class _DnsResultRow extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// The privacy layer: the switch, the second hop, and the checks that show whether
+/// either of them is really doing anything.
+///
+/// It sits in General because it is one decision, not a page: hide what the carrier
+/// can read, and (optionally) hand the destinations to a second server of your own
+/// choosing. The test button exists because a setting nobody can measure is a placebo -
+/// the lines it prints are answers from the network, not echoes of the config.
+class _PrivacyBlock extends StatefulWidget {
+  const _PrivacyBlock();
+
+  @override
+  State<_PrivacyBlock> createState() => _PrivacyBlockState();
+}
+
+class _PrivacyBlockState extends State<_PrivacyBlock> {
+  bool _on = false;
+  String _chainId = '';
+  String _chainName = '';
+  bool _inStore = true;
+  List<String> _result = const [];
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final s = await PrivacyApi.get();
+      if (mounted) {
+        setState(() {
+          _on = s.on;
+          _chainId = s.chainId;
+          _chainName = s.chainName;
+          _inStore = s.chainInStore;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _save() async {
+    await PrivacyApi.set(on: _on, chainId: _chainId);
+  }
+
+  /// The servers this phone holds, by name. The address is never asked for here: the
+  /// choice travels back as an id and the library resolves it when it builds the config.
+  Future<void> _pick() async {
+    List<Map<String, String>> rows;
+    try {
+      rows = await IrRowsBridge.all();
+    } catch (_) {
+      return;
+    }
+    if (!mounted) return;
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Exit through a second server'),
+        content: SizedBox(
+          width: 460,
+          height: 420,
+          child: rows.isEmpty
+              ? const Text('The list is empty - update it first.')
+              : ListView(
+                  children: [
+                    ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.close_rounded),
+                      title: const Text('No second server'),
+                      onTap: () => Navigator.pop(context, ''),
+                    ),
+                    const Divider(height: 1),
+                    for (final r in rows)
+                      ListTile(
+                        dense: true,
+                        leading: Icon(
+                          r['id'] == _chainId
+                              ? Icons.radio_button_checked_rounded
+                              : Icons.radio_button_unchecked_rounded,
+                        ),
+                        title: Text((r['name'] ?? '').isEmpty ? r['id'] ?? '' : r['name']!),
+                        subtitle: (r['cat'] ?? '').isEmpty
+                            ? null
+                            : Text(r['cat']!, style: const TextStyle(fontSize: 12)),
+                        onTap: () => Navigator.pop(context, r['id'] ?? ''),
+                      ),
+                  ],
+                ),
+        ),
+      ),
+    );
+    if (picked == null) return;
+    _chainId = picked;
+    final hit = rows.firstWhere(
+      (r) => r['id'] == picked,
+      orElse: () => const <String, String>{},
+    );
+    _chainName = hit['name'] ?? '';
+    // a choice that is no longer in the list still shows as a choice, but says so
+    _inStore = picked.isEmpty || hit.isNotEmpty;
+    await _save();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _test() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _result = const ['measuring...'];
+    });
+    try {
+      final r = await PrivacyApi.test();
+      if (mounted) setState(() => _result = r.lines());
+    } catch (e) {
+      if (mounted) setState(() => _result = ['the check could not run']);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Row(
+          icon: Icons.shield_outlined,
+          label: 'Hide names and plain traffic from the server',
+          value: 'encrypted DNS lookups, no plain web traffic - applies on the next connect',
+          child: Switch(
+            value: _on,
+            onChanged: (v) async {
+              setState(() => _on = v);
+              await _save();
+            },
+          ),
+        ),
+        _Row(
+          icon: Icons.splitscreen_outlined,
+          label: 'Exit through a second server',
+          value: _chainId.isEmpty
+              ? 'the first server sees every site you open'
+              : _inStore
+                  ? _chainName.isEmpty
+                      ? 'chosen - it is no longer named in the list'
+                      : _chainName
+                  : 'that server is no longer in the list',
+          onTap: _pick,
+          child: const Icon(Icons.chevron_right_rounded),
+        ),
+        _Row(
+          icon: Icons.fact_check_outlined,
+          label: 'Run the checks',
+          child: _busy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.play_arrow_rounded),
+          onTap: _test,
+        ),
+        for (final line in _result)
+          Padding(
+            padding: const EdgeInsets.only(left: 44, top: 2),
+            child: Text(line, style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+          ),
+      ],
     );
   }
 }

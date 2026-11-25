@@ -3304,6 +3304,12 @@ static const sblob g_sb[] = {
     { 9, {
         0xd8, 0x28, 0x93, 0xcd, 0x71, 0xd8, 0x39, 0x81, 0xf7
     } },   /* rowLocate */   /* index 272, round trip "rowLocate" */
+    { 8, {
+        0x36, 0x9a, 0xee, 0x45, 0xa7, 0x39, 0x6a, 0xc4
+    } },   /* chain_id */   /* index 273, round trip "chain_id" */
+    { 7, {
+        0x04, 0x63, 0xc7, 0x3d, 0x89, 0xe6, 0x5b
+    } },   /* privacy */   /* index 274, round trip "privacy" */
 };
 
 /** the decoded text of one entry; valid until six more have been decoded */
@@ -6202,8 +6208,29 @@ static void sb_direct(sbuf *s) {
     sb_add(s, "{\"tag\":\"direct\",\"protocol\":\"freedom\"}");
 }
 
+/* ---- the privacy layer ----
+ * Two switches the person sets in Settings, read here out of the prefs the store
+ * already lives in: a flag and a row id. Nothing about a server crosses back out
+ * of this file as a result, and the config the core demands as a String is still
+ * built in here.
+ *
+ * g_priv   - hide the names and the plain traffic from whoever carries it
+ * g_tag    - the tag of the outbound being written (the chain needs two names)
+ * g_dialer - when set, this outbound dials THROUGH that tag instead of directly:
+ *            Xray's sockopt.dialerProxy, which is what makes a second hop possible
+ *            inside one core - no second process, no rebuilt library.
+ */
+#define PRIV_KEY sb(274)
+#define CHAIN_KEY sb(273)
+static int g_priv = 0;
+static const char *g_tag = "proxy";
+static const char *g_dialer = NULL;
+
+/** the row a saved id points at right now lives below, with the store it reads */
 static void sb_outbound(sbuf *s) {
-    sb_add(s, "{\"tag\":\"proxy\",\"protocol\":");
+    sb_add(s, "{\"tag\":");
+    sb_str(s, g_tag);
+    sb_add(s, ",\"protocol\":");
     sb_str(s, pl_kind == 0 ? "vless" : pl_kind == 1 ? "trojan" : pl_kind == 2 ? "vmess" : "shadowsocks");
     sb_add(s, ",\"settings\":");
     if (pl_kind == 1) {
@@ -6243,7 +6270,16 @@ static void sb_outbound(sbuf *s) {
         }
         sb_add(s, "}]}]}");
     }
-    if (pl_kind == 3) { sb_add(s, "}"); return; }
+    if (pl_kind == 3) {
+        /* a shadowsocks outbound carries no streamSettings of its own, so the dialer
+           through the first hop has to bring its own block */
+        if (g_dialer != NULL) {
+            sb_add(s, ",\"streamSettings\":{\"sockopt\":{\"dialerProxy\":");
+            sb_str(s, g_dialer);
+            sb_add(s, "}}");
+        }
+        sb_add(s, "}"); return;
+    }
     sb_add(s, ",\"streamSettings\":");
     sb_add(s, "{\"network\":");
     sb_str(s, pl_type);
@@ -6295,11 +6331,50 @@ static void sb_outbound(sbuf *s) {
         if (pl_spx[0]) { sb_add(s, ",\"spiderX\":"); sb_str(s, pl_spx); }
         sb_add(s, "}");
     }
+    if (g_dialer != NULL) {
+        sb_add(s, ",\"sockopt\":{\"dialerProxy\":");
+        sb_str(s, g_dialer);
+        sb_add(s, "}");
+    }
     sb_add(s, "}}");
 }
 
 static void sb_routing(sbuf *s) {
-    sb_add(s, "{\"domainStrategy\":\"AsIs\",\"rules\":[{\"type\":\"field\",\"outboundTag\":\"proxy\",\"network\":\"tcp,udp\"}]}");
+    if (!g_priv) {
+        sb_add(s, "{\"domainStrategy\":\"AsIs\",\"rules\":[{\"type\":\"field\",\"outboundTag\":\"proxy\",\"network\":\"tcp,udp\"}]}");
+        return;
+    }
+    /* Three rules, each with one job, all of them about what the carrier learns:
+       port 53 is answered by the core itself (over DoH, inside TLS) instead of
+       riding out as a cleartext query; sniffed HTTP and port 80 are refused, so a
+       server that carries the traffic cannot read a page in the open; everything
+       else goes to the exit. With a chain, the first server sees one destination -
+       the exit - and none of the names. */
+    sb_add(s, "{\"domainStrategy\":\"AsIs\",\"rules\":[");
+    sb_add(s, "{\"type\":\"field\",\"port\":\"53\",\"network\":\"tcp,udp\",\"outboundTag\":\"dns-out\"},");
+    sb_add(s, "{\"type\":\"field\",\"protocol\":[\"http\"],\"outboundTag\":\"block\"},");
+    sb_add(s, "{\"type\":\"field\",\"network\":\"tcp\",\"port\":\"80\",\"outboundTag\":\"block\"},");
+    sb_add(s, "{\"type\":\"field\",\"outboundTag\":\"proxy\",\"network\":\"tcp,udp\"}]}");
+}
+
+/** the resolver the core answers with: DoH to a literal address, so the name of
+ *  the DoH host is never itself something the carrier has to resolve for us. */
+static void sb_dns(sbuf *s) {
+    sb_add(s, ",\"dns\":{\"servers\":[{\"address\":\"https://1.1.1.1/dns-query\",\"port\":443,");
+    sb_add(s, "\"skipFallback\":true}],\"queryStrategy\":\"UseIPv4\",\"disableFallback\":true}");
+}
+
+/** the two outbounds the privacy rules send things to */
+static void sb_priv_out(sbuf *s) {
+    sb_add(s, ",{\"tag\":\"block\",\"protocol\":\"blackhole\",\"settings\":{}}");
+    sb_add(s, ",{\"tag\":\"dns-out\",\"protocol\":\"dns\"}");
+}
+
+/** names are read off the first packets so the http rule can actually match: the
+ *  rule alone, without sniffing, is a rule that fires on nothing */
+static void sb_sniff(sbuf *s) {
+    if (!g_priv) return;
+    sb_add(s, ",\"sniffing\":{\"enabled\":true,\"destOverride\":[\"http\",\"tls\",\"quic\"]}");
 }
 
 static void sb_socks(sbuf *s, int port) {
@@ -6357,6 +6432,19 @@ static int row_snapshot(int row, char *link, int linkcap, char *addr, int addrca
     return 1;
 }
 
+/** the row a saved id points at right now, or -1: a sync may have dropped the server
+ *  the person chose as their second hop, and that must not stop a connect */
+static int row_index_of_id(const char *id) {
+    int found = -1;
+    if (id == NULL || id[0] == 0) return -1;
+    pthread_mutex_lock(&g_store_mtx);
+    for (int i = 0; i < g_rows_n; i++) {
+        if (strcmp(g_rows[i].id, id) == 0) { found = i; break; }
+    }
+    pthread_mutex_unlock(&g_store_mtx);
+    return found;
+}
+
 /** the panel text, freshly copied, so the caller can still hand it out after a sync replaces it */
 static unsigned char *trim_take(int *len) {
     unsigned char *copy = NULL;
@@ -6390,10 +6478,12 @@ static void trim_install(unsigned char *t, int n) {
 }
 
 /** the config text, assembled once and shared by the file writer and the string entry */
-static int config_build(sbuf *s, int mode, int socksPort) {
+static int config_build(sbuf *s, int mode, int socksPort, const char *hop1) {
     sb_add(s, "{\"log\":{\"loglevel\":\"warning\"}");
     if (mode == 0) {
-        sb_add(s, ",\"inbounds\":[{\"tag\":\"tun-in\",\"protocol\":\"tun\",\"settings\":{\"name\":\"utun42\",\"desc\":\"Blob\",\"mtu\":1500}},");
+        sb_add(s, ",\"inbounds\":[{\"tag\":\"tun-in\",\"protocol\":\"tun\",\"settings\":{\"name\":\"utun42\",\"desc\":\"Blob\",\"mtu\":1500}");
+        sb_sniff(s);
+        sb_add(s, "},");
         sb_socks(s, 10890);
         sb_add(s, "]");
     } else if (mode == 2) {
@@ -6402,11 +6492,17 @@ static int config_build(sbuf *s, int mode, int socksPort) {
         sb_add(s, "]");
     }
     sb_add(s, ",\"outbounds\":[");
+    /* the chain: the picked server is written first as the carrier (tag hop1), and the
+       exit - the server the person chose as second - dials through it. The carrier is
+       built from a row parsed before this one, so its text arrives ready-made. */
+    if (hop1 != NULL && hop1[0]) { sb_add(s, hop1); sb_add(s, ","); }
     sb_outbound(s);
     sb_add(s, ",");
     sb_direct(s);
+    if (g_priv && mode == 0) sb_priv_out(s);
     sb_add(s, "],\"routing\":");
     sb_routing(s);
+    if (g_priv && mode == 0) sb_dns(s);
     if (mode == 0) {
         sb_add(s, ",\"stats\":{},\"policy\":{\"levels\":{\"0\":{\"statsUserUplink\":true,\"statsUserDownlink\":true}},\"system\":{\"statsOutboundUplink\":true,\"statsOutboundDownlink\":true}}");
     }
@@ -6440,13 +6536,57 @@ static jstring cfg_text(JNIEnv *env, jclass cls, jint row, jint mode, jint socks
             strncmp(g_step, "vmess:", 6) != 0) set_step("cfgforrow:parse");
         return NULL;
     }
+    /* the privacy switches, read here rather than passed in: the settings page owns a flag and a
+       row id, and nothing else about a server leaves this file */
+    char *pv = pref_get(env, PRIV_KEY);
+    g_priv = (pv != NULL && pv[0] == '1') ? 1 : 0;
+    free(pv);
+    char chainId[PLR_ID];
+    chainId[0] = 0;
+    char *cid = (mode == 0) ? pref_get(env, CHAIN_KEY) : NULL;
+    if (cid != NULL) { snprintf(chainId, sizeof(chainId), "%s", cid); free(cid); }
+    char *hop1 = NULL;
+    if (g_priv && mode == 0 && chainId[0] != 0) {
+        int exitRow = row_index_of_id(chainId);
+        if (exitRow >= 0 && exitRow != row) {
+            /* write the carrier's outbound first, while the picked row is still the one parsed */
+            sbuf h; h.b = NULL; h.n = 0; h.cap = 0;
+            g_tag = "hop1";
+            sb_outbound(&h);
+            g_tag = "proxy";
+            hop1 = h.b;
+            char elink[PLR_LINK];
+            if (hop1 != NULL && row_snapshot(exitRow, elink, (int) sizeof(elink), NULL, 0, NULL)) {
+                jstring jel = (*env)->NewStringUTF(env, elink);
+                int eok = jel != NULL ? pl_parse_link(env, cls, jel) : 0;
+                if (jel != NULL) (*env)->DeleteLocalRef(env, jel);
+                if (eok == 1) {
+                    g_dialer = "hop1";
+                } else {
+                    /* the exit row will not parse: connect on one hop instead of refusing, and
+                       say which half failed - the test button reads the same fact back */
+                    free(hop1); hop1 = NULL;
+                    g_dialer = NULL;
+                    set_step("chain:exit-unparsed");
+                }
+            } else {
+                free(hop1); hop1 = NULL;
+                set_step("chain:no-exit-row");
+            }
+        }
+    }
     sbuf s;
     s.b = NULL; s.n = 0; s.cap = 0;
-    if (!config_build(&s, mode, socksPort)) {
-        free(s.b); pthread_mutex_unlock(&g_cfg_mtx); set_step("cfgforrow:build"); return NULL;
+    if (!config_build(&s, mode, socksPort, hop1)) {
+        free(s.b); free(hop1);
+        g_dialer = NULL; g_priv = 0;
+        pthread_mutex_unlock(&g_cfg_mtx); set_step("cfgforrow:build"); return NULL;
     }
     jstring out = (*env)->NewStringUTF(env, s.b);
     free(s.b);
+    free(hop1);
+    g_dialer = NULL;
+    g_priv = 0;
     pthread_mutex_unlock(&g_cfg_mtx);
     if (out) set_step("cfgforrow:ok");
     return out;
