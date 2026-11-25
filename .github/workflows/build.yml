@@ -100,13 +100,26 @@ jobs:
           status=${PIPESTATUS[0]}
           # ':gradle' refusing to configure is this runner's own flake: it names no
           # file and no line of ours, and it has cost a finished build before. It
-          # is asked once more, and only when that refusal is all the log says.
+          # is asked again, and only when that refusal is all the log says.
+          #
+          # The refusal is a 429 from Maven's CDN, which the runner shares with every
+          # other build on its IP, so an immediate retry asks the rate limiter in the
+          # same second and hears the same answer - which is what happened on the run
+          # that printed this. Wait for the window to pass, and ask twice.
           if [ "$status" -ne 0 ] && grep -qE "configuring project ':gradle'|Could not (resolve|download|create)" build.log \
              && ! grep -qE '^e: |^error:|Error: |^lib/|^test/' build.log; then
-            echo "::notice::the build system itself refused to start; building once more"
-            rm -f build.log
-            do_build 2>&1 | tee build.log
-            status=${PIPESTATUS[0]}
+            for nap in 90 180; do
+              echo "::notice::the build system itself refused to start; waiting ${nap}s and building again"
+              sleep "$nap"
+              rm -f build.log
+              do_build 2>&1 | tee build.log
+              status=${PIPESTATUS[0]}
+              if [ "$status" -eq 0 ]; then break; fi
+              # a second refusal of the same kind is worth waiting through; anything that
+              # names a file of ours is not a flake and the loop has no business with it
+              grep -qE "configuring project ':gradle'|Could not (resolve|download|create)" build.log || break
+              if grep -qE '^e: |^error:|Error: |^lib/|^test/' build.log; then break; fi
+            done
           fi
           # The lines that name a compiler error, and the block under "What went
           # wrong" - a configure failure says its real reason only there, and
