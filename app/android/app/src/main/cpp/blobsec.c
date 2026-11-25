@@ -6549,7 +6549,9 @@ static jstring cfg_text(JNIEnv *env, jclass cls, jint row, jint mode, jint socks
     char *cid = (mode == 0) ? pref_get(env, CHAIN_KEY) : NULL;
     if (cid != NULL) { snprintf(chainId, sizeof(chainId), "%s", cid); free(cid); }
     char *hop1 = NULL;
-    if (g_priv && mode == 0 && chainId[0] != 0) {
+    /* the second hop is its own choice: it does not wait for the name-hiding rules, and
+       turning those off must not silently turn the chain off as well */
+    if (mode == 0 && chainId[0] != 0) {
         int exitRow = row_index_of_id(chainId);
         if (exitRow >= 0 && exitRow != row) {
             /* write the carrier's outbound first, while the picked row is still the one parsed */

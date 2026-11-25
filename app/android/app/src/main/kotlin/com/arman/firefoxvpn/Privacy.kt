@@ -70,13 +70,16 @@ object Privacy {
 
         val row = if (id.isNotEmpty()) runCatching { NativeSec.rowOf(id) }.getOrDefault(-1) else -1
         out["chainInStore"] = row >= 0
-        if (hard && id.isEmpty()) {
+        // the chain is measured on its own: it is a separate choice from the name-hiding
+        // rules, and a test that only ran while those were on could never say whether the
+        // second hop was carrying
+        if (id.isEmpty()) {
             out["chainCarries"] = false
             CoreService.log("chain: no second server chosen")
-        } else if (hard && row < 0) {
+        } else if (row < 0) {
             out["chainCarries"] = false
             CoreService.log("chain: the second server is no longer in the list")
-        } else if (hard && exitIp.isNotEmpty()) {
+        } else if (exitIp.isNotEmpty()) {
             // the exit must be the SECOND server's own address: the first one only carries
             val hopIp = runCatching {
                 NativeSec.locate(row).split(';').getOrNull(0).orEmpty().trim()

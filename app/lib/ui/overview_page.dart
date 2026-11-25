@@ -3040,12 +3040,14 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
           ),
           const SizedBox(width: 14),
           Expanded(
+            flex: 3,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Server',
+                  maxLines: 1,
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: p.muted,
                     fontWeight: FontWeight.w700,
@@ -3063,12 +3065,21 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
               ],
             ),
           ),
+          // The address is allowed to give way, not to take the row: an IPv6 is
+          // long enough to push the name column down to one letter per line, and
+          // it reads LTR whatever the app's language is.
           if (_ip.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: Text(
-                _ip,
-                style: theme.textTheme.labelSmall?.copyWith(color: p.muted),
+            Flexible(
+              flex: 2,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: Text(
+                  _ip,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textDirection: TextDirection.ltr,
+                  style: theme.textTheme.labelSmall?.copyWith(color: p.muted),
+                ),
               ),
             ),
           IconButton(
