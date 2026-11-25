@@ -43,6 +43,14 @@ object Privacy {
      * The lines are the point: "it is on" is not evidence, "the traffic left through the
      * second server" is.
      */
+    /**
+     * The shape of the config the tunnel that is running now was built with, as the library
+     * left it: `hardening-chain-chosen`. Three digits and nothing else - no address, no id.
+     * This is what turns "it should be on" into "it is in the running config or it is not".
+     */
+    fun runningShape(context: Context): String =
+        prefs(context).getString("cfg_shape", "") ?: ""
+
     fun test(context: Context): Map<String, Any?> {
         val out = LinkedHashMap<String, Any?>()
         val hard = on(context)
@@ -51,6 +59,7 @@ object Privacy {
         out["chainChosen"] = id.isNotEmpty()
         val live = CoreService.on
         out["connected"] = live
+        out["running"] = runningShape(context)
         if (!live) {
             // nothing below can be measured without a tunnel, and saying "no second server
             // chosen" when the switch was simply off is how a correct setup looks broken

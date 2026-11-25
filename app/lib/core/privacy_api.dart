@@ -32,13 +32,30 @@ class PrivacyChecks {
   bool get exitKnown => raw['exitKnown'] == true;
   bool get connected => raw['connected'] == true;
   bool get tunnelSilent => raw['tunnelSilent'] == true;
+
+  /// `hardening-chain-chosen`, as the library wrote it for the tunnel that is running.
+  String get running => '${raw['running'] ?? ''}';
+
+  /// The switch says one thing, the running config says another: the change is
+  /// sitting in the settings and has not been dialed with yet.
+  bool get staleHardening =>
+      hardening && running.isNotEmpty && !running.startsWith('1');
+  bool get staleChain =>
+      chainChosen && connected && running.split('-').length == 3 && running.split('-')[1] != '1';
   bool? get httpBlocked => raw['httpBlocked'] == null ? null : raw['httpBlocked'] == true;
 
-  /// Three lines, each a fact the network answered, not a setting echoed back.
+  /// The lines, each a fact the network or the running config answered.
   List<String> lines() => [
         hardening
             ? 'Hardening: on - lookups go out encrypted, plain web traffic is refused'
             : 'Hardening: off',
+        if (running.isEmpty)
+          'Running config: nothing has been dialed with these settings yet'
+        else
+          'Running config: hardening ${running.split("-")[0] == "1" ? "in it" : "NOT in it"}'
+              ' - second hop ${running.split("-").length > 1 && running.split("-")[1] == "1" ? "in it" : "NOT in it"}',
+        if (staleHardening || staleChain)
+          'The tunnel was dialed before this change - turn it off and on again',
         if (!chainChosen)
           'Second hop: not chosen - one server sees every site you open'
         else if (!chainInStore)

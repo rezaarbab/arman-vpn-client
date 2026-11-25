@@ -2956,13 +2956,11 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
   /// again after a visit to Settings paints from here at once instead of
   /// blanking until the next answer comes back.
   static final _ccById = <String, String>{};
-  static final _ipById = <String, String>{};
   static final _msById = <String, int>{};
 
   String _cc = '';
   String _for = '';
   int _ping = -1;
-  String _ip = '';
 
   @override
   void initState() {
@@ -2974,7 +2972,6 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
   /// The figures this row already has, before anything is asked for.
   void _show(String id) {
     _cc = _ccById[id] ?? '';
-    _ip = _ipById[id] ?? '';
     _ping = _msById[id] ?? -1;
   }
 
@@ -2997,7 +2994,6 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
       if (!mounted || _for != id) return;
       final cc = (info['cc'] ?? '').toLowerCase();
       final ms = int.tryParse(info['ms'] ?? '') ?? -1;
-      final ip = info['ip'] ?? '';
       setState(() {
         if (cc.length == 2) {
           _cc = cc;
@@ -3008,10 +3004,6 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
         // is what made a whole list look dead. The pill only shows a figure.
         _ping = ms;
         _msById[id] = _ping;
-        if (ip.isNotEmpty) {
-          _ip = ip;
-          _ipById[id] = ip;
-        }
       });
     } catch (_) {}
   }
@@ -3065,23 +3057,10 @@ class _OurPlaceCardState extends State<_OurPlaceCard> {
               ],
             ),
           ),
-          // The address is allowed to give way, not to take the row: an IPv6 is
-          // long enough to push the name column down to one letter per line, and
-          // it reads LTR whatever the app's language is.
-          if (_ip.isNotEmpty)
-            Flexible(
-              flex: 2,
-              child: Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: Text(
-                  _ip,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textDirection: TextDirection.ltr,
-                  style: theme.textTheme.labelSmall?.copyWith(color: p.muted),
-                ),
-              ),
-            ),
+          // The server's address is not shown here at all, on purpose: it is the
+          // longest text the row can be handed (an IPv6 is 39 characters), it means
+          // nothing to the person holding the phone, and it is what folded the
+          // server's own name into one letter per line.
           IconButton(
             tooltip: 'Refresh',
             visualDensity: VisualDensity.compact,

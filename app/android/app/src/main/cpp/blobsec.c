@@ -3310,6 +3310,12 @@ static const sblob g_sb[] = {
     { 7, {
         0x04, 0x63, 0xc7, 0x3d, 0x89, 0xe6, 0x5b
     } },   /* privacy */   /* index 274, round trip "privacy" */
+    { 9, {
+        0x75, 0xd8, 0x3e, 0x8c, 0xd4, 0x4b, 0xaa, 0x10, 0x9a
+    } },   /* blob_core */   /* index 275, round trip "blob_core" */
+    { 9, {
+        0x55, 0xb5, 0x17, 0x52, 0xd9, 0x2f, 0x85, 0xf1, 0x7b
+    } },   /* cfg_shape */   /* index 276, round trip "cfg_shape" */
 };
 
 /** the decoded text of one entry; valid until six more have been decoded */
@@ -6222,6 +6228,11 @@ static void sb_direct(sbuf *s) {
  */
 #define PRIV_KEY sb(274)
 #define CHAIN_KEY sb(273)
+/* the settings file the app writes. Not the one the row store lives in: the first
+   version of this read blob-rows, which is why a switch that was plainly ON in the
+   page never reached the config - the two files are different and nothing said so */
+#define CORE_PREF sb(275)
+#define SHAPE_KEY sb(276)
 static int g_priv = 0;
 static const char *g_tag = "proxy";
 static const char *g_dialer = NULL;
@@ -6541,12 +6552,12 @@ static jstring cfg_text(JNIEnv *env, jclass cls, jint row, jint mode, jint socks
     }
     /* the privacy switches, read here rather than passed in: the settings page owns a flag and a
        row id, and nothing else about a server leaves this file */
-    char *pv = pref_get(env, PRIV_KEY);
+    char *pv = pref_get_in(env, CORE_PREF, PRIV_KEY);
     g_priv = (pv != NULL && pv[0] == '1') ? 1 : 0;
     free(pv);
     char chainId[PLR_ID];
     chainId[0] = 0;
-    char *cid = (mode == 0) ? pref_get(env, CHAIN_KEY) : NULL;
+    char *cid = (mode == 0) ? pref_get_in(env, CORE_PREF, CHAIN_KEY) : NULL;
     if (cid != NULL) { snprintf(chainId, sizeof(chainId), "%s", cid); free(cid); }
     char *hop1 = NULL;
     /* the second hop is its own choice: it does not wait for the name-hiding rules, and
@@ -6590,6 +6601,15 @@ static jstring cfg_text(JNIEnv *env, jclass cls, jint row, jint mode, jint socks
     jstring out = (*env)->NewStringUTF(env, s.b);
     free(s.b);
     free(hop1);
+    /* what the tunnel that is about to start was really built with: three digits, no address,
+       no id, no name - and the only way a page can say "the switch is on but the config does
+       not carry it" instead of guessing at it */
+    if (mode == 0) {
+        char shape[24];
+        snprintf(shape, sizeof(shape), "%d-%d-%d", g_priv, g_dialer != NULL ? 1 : 0,
+                 chainId[0] != 0 ? 1 : 0);
+        pref_put_in(env, CORE_PREF, SHAPE_KEY, shape, 0);
+    }
     g_dialer = NULL;
     g_priv = 0;
     pthread_mutex_unlock(&g_cfg_mtx);
