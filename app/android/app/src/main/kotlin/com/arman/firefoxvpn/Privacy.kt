@@ -36,6 +36,18 @@ object Privacy {
     fun chainId(context: Context): String = prefs(context).getString("chain_id", "") ?: ""
 
     /**
+     * The chosen second hop as the list names it, so the page can say what it picked instead of
+     * an id nobody can read. Empty when no second hop is chosen or when that server has left the
+     * list - the name is never guessed from the id, and never an address.
+     */
+    fun chainName(context: Context): String {
+        val id = chainId(context)
+        if (id.isEmpty()) return ""
+        val row = runCatching { NativeSec.rowOf(id) }.getOrDefault(-1)
+        return if (row < 0) "" else IrRows.name(row)
+    }
+
+    /**
      * Move the flag from a number to text, once. The library asks for it as text and a number
      * under that key reads back as absent - so a person who set the switch before this build
      * existed has it on in the page and off in the config until this runs.
