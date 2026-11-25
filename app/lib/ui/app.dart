@@ -341,7 +341,7 @@ class _ShellState extends State<Shell> {
                       core: core,
                       settings: widget.settings,
                     ),
-                    _Page.about => AboutPage(core: core, settings: widget.settings),
+                    _Page.about => AboutPage(core: core),
                   },
           ),
         ],

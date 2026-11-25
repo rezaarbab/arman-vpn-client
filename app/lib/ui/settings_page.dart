@@ -101,11 +101,8 @@ List<(String, List<SettingsEntry>)> settingsGroups(
     l.sectionGeneral,
     [
       (SettingsSection.general, Icons.tune_rounded, l.sectionGeneral),
-      // On a phone routing is read under About, where the app itself is
-      // described: which apps skip the tunnel and where the rest goes is set
-      // once, not fiddled with. The computer keeps it in this list.
-      if (!Platform.isAndroid)
-        (SettingsSection.routing, Icons.alt_route_rounded, l.sectionRouting),
+      (SettingsSection.routing, Icons.alt_route_rounded, l.sectionRouting),
+      if (tun) (SettingsSection.tun, Icons.vpn_lock_rounded, l.sectionTun),
       if (tun) (SettingsSection.tun, Icons.vpn_lock_rounded, l.sectionTun),
     ],
   ),
@@ -3295,8 +3292,12 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
     } catch (_) {}
   }
 
+  /// What the screen shows is what the phone stored, not what the tap intended: the
+  /// row is read back after every write, so a choice that did not land cannot be
+  /// displayed as if it had.
   Future<void> _save() async {
     await PrivacyApi.set(on: _on, chainId: _chainId);
+    await _load();
   }
 
   /// The servers this phone holds, by name. The address is never asked for here: the

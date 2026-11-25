@@ -31,6 +31,7 @@ class PrivacyChecks {
   bool get chainCarries => raw['chainCarries'] == true;
   bool get exitKnown => raw['exitKnown'] == true;
   bool get connected => raw['connected'] == true;
+  bool get tunnelSilent => raw['tunnelSilent'] == true;
   bool? get httpBlocked => raw['httpBlocked'] == null ? null : raw['httpBlocked'] == true;
 
   /// Three lines, each a fact the network answered, not a setting echoed back.
@@ -43,9 +44,9 @@ class PrivacyChecks {
         else if (!chainInStore)
           'Second hop: that server is no longer in the list - pick it again'
         else if (!connected)
-          'Second hop: connect first - there is no exit to measure while it is off'
-        else if (!exitKnown)
-          'Second hop: the exit could not be measured - the page did not answer'
+          'Second hop: connect first - nothing can be measured while it is off'
+        else if (tunnelSilent)
+          'Second hop: the tunnel did not answer the page - try again a moment later'
         else
           chainCarries
               ? 'Second hop: the traffic leaves through it - the first server sees one destination'

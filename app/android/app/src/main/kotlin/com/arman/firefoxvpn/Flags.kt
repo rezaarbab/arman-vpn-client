@@ -23,6 +23,9 @@ object Flags {
 
     private const val TRACE = "https://www.cloudflare.com/cdn-cgi/trace"
 
+    /** The socks inbound of the tunnel's own config, set by the library when it builds it. */
+    private const val TUNNEL_SOCKS = 10890
+
     private fun prefs(context: Context) =
         context.getSharedPreferences("blob_core", Context.MODE_PRIVATE)
 
@@ -197,20 +200,39 @@ object Flags {
      * [ask] is the difference between opening a page and pressing its button: without it the
      * answer is what an earlier fetch left here, so Home costs no request every time it is built.
      */
+    /**
+     * The exit as the tunnel itself answers it.
+     *
+     * The core listens on a local socks port inside the tunnel's config, so a request sent
+     * there leaves from wherever the tunnel leaves. A probe core started beside the tunnel
+     * does not: it dials the first server on its own and answers that server's exit - which is
+     * how a chain looked like it was not carrying, and how this app's own exit was wrong while
+     * connected. No core is started here, so it is also the fast way.
+     *
+     * "" for both means the tunnel did not answer, never that the exit is empty.
+     */
+    fun tunnelExit(): Map<String, String> {
+        val raw = runCatching { NativeSec.probe(TRACE, "ip;loc", TUNNEL_SOCKS) }.getOrDefault("")
+        if (raw.isEmpty()) return mapOf("ip" to "", "cc" to "", "answered" to "0")
+        val parts = raw.split(';')
+        return mapOf(
+            "ip" to parts.getOrNull(0).orEmpty().trim(),
+            "cc" to parts.getOrNull(1).orEmpty().trim().uppercase(),
+            "answered" to "1",
+        )
+    }
+
     fun mine(context: Context, ask: Boolean): Map<String, Any?> {
         val p = prefs(context)
         val out = HashMap<String, Any?>()
         if (ask && CoreService.on) {
-            val id = CoreService.picked(context)
-            val row = rowOf(id)
-            if (row < 0) {
-                out["ip"] = p.getString("pi_" + id.take(64), "") ?: ""
-                out["cc"] = p.getString("cc_" + id.take(64), "") ?: ""
-                return out
-            }
-            val seen = readThrough(context, id, row)
-            out["ip"] = seen.second
-            out["cc"] = seen.third
+            // through the tunnel, not beside it
+            val seen = tunnelExit()
+            out["ip"] = seen["ip"] ?: ""
+            out["cc"] = seen["cc"] ?: ""
+            out["answered"] = seen["answered"] ?: "0"
+            if ((seen["ip"] ?: "").length in 7..45) p.edit().putString("my_ip", seen["ip"]).apply()
+            if ((seen["cc"] ?: "").length == 2) p.edit().putString("my_cc", seen["cc"]).apply()
             return out
         }
         out["ip"] = p.getString("my_ip", "") ?: ""

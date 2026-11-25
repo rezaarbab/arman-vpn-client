@@ -3,12 +3,9 @@ import 'dart:io';
 import 'package:material_ui/material_ui.dart';
 
 import '../app_info.dart';
-import '../app_settings.dart';
 import '../core/core_controller.dart';
 import '../l10n/app_localizations.dart';
 import '../platform.dart';
-import 'bypass_apps_page.dart';
-import 'settings_page.dart';
 import 'widgets.dart';
 
 /// The versions, and the places the app's files are.
@@ -18,14 +15,10 @@ import 'widgets.dart';
 /// project's - which could have handed a user someone else's file as "the new
 /// version". The build's own commit is in the log page instead.
 ///
-/// Routing lives here too, on a phone: which apps go outside the tunnel and
-/// where the traffic is decided is something a person reads about the app, not
-/// a knob they turn every day, and General had filled up with it.
 class AboutPage extends StatelessWidget {
-  const AboutPage({super.key, required this.core, required this.settings});
+  const AboutPage({super.key, required this.core});
 
   final CoreController core;
-  final AppSettings settings;
 
   @override
   Widget build(BuildContext context) {
@@ -53,36 +46,6 @@ class AboutPage extends StatelessWidget {
               const Divider(height: 24),
               _Line(label: l.coreVersionLabel, value: status?.version ?? '—'),
               if (Platform.isAndroid) ...[
-                const Divider(height: 24),
-                // Where the traffic is decided. Two pages, because they answer
-                // two different questions: which apps skip the tunnel, and
-                // what the tunnel does with the rest.
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  leading: const Icon(Icons.alt_route_rounded),
-                  title: Text(l.bypassApps),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(builder: (_) => const BypassAppsPage()),
-                  ),
-                ),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  leading: const Icon(Icons.public_rounded),
-                  title: Text(l.sectionRouting),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => SettingsPage(
-                        core: core,
-                        settings: settings,
-                        section: SettingsSection.routing,
-                      ),
-                    ),
-                  ),
-                ),
                 const Divider(height: 24),
                 Row(
                   children: [

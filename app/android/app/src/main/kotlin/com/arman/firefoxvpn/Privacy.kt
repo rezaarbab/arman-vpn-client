@@ -52,38 +52,48 @@ object Privacy {
         out["hardening"] = hard
         val id = chainId(context)
         out["chainChosen"] = id.isNotEmpty()
-        // Nothing can be measured with no tunnel: a direct read would answer the carrier's
-        // own address and the chain test would call that "not carrying".
         val live = CoreService.on
         out["connected"] = live
+        if (!live) {
+            // nothing below can be measured without a tunnel, and saying "no second server
+            // chosen" when the switch was simply off is how a correct setup looks broken
+            out["chainInStore"] = id.isNotEmpty()
+            CoreService.log("privacy: not connected - nothing to measure yet")
+            return out
+        }
 
-        // 1. where the traffic really exits, measured through the tunnel
-        val mine = if (live) runCatching { Flags.mine(context, true) }.getOrNull() else null
-        val exitIp = (mine?.get("ip") ?: "").toString()
+        // 1. where the traffic really exits - asked of the tunnel, not of a core beside it
+        val seen = runCatching { Flags.tunnelExit() }.getOrDefault(mapOf("ip" to "", "answered" to "0"))
+        val exitIp = seen["ip"].orEmpty()
         out["exitKnown"] = exitIp.isNotEmpty()
+        if (exitIp.isEmpty()) {
+            out["tunnelSilent"] = true
+            CoreService.log("privacy: the tunnel did not answer the page")
+        }
 
-        if (live && hard && id.isNotEmpty()) {
-            val row = runCatching { NativeSec.rowOf(id) }.getOrDefault(-1)
-            out["chainInStore"] = row >= 0
-            if (row >= 0 && exitIp.isNotEmpty()) {
-                // the exit must be the SECOND server's own address: the first one only carries
-                val hopIp = runCatching {
-                    NativeSec.locate(row).split(';').getOrNull(0).orEmpty().trim()
-                }.getOrDefault("")
-                val carried = hopIp.isNotEmpty() && exitIp == hopIp
-                out["chainCarries"] = carried
-                CoreService.log(
-                    if (carried) "chain: the traffic leaves through the second server"
-                    else "chain: the first server is still the exit",
-                )
-            }
-        } else if (hard) {
+        val row = if (id.isNotEmpty()) runCatching { NativeSec.rowOf(id) }.getOrDefault(-1) else -1
+        out["chainInStore"] = row >= 0
+        if (hard && id.isEmpty()) {
             out["chainCarries"] = false
             CoreService.log("chain: no second server chosen")
+        } else if (hard && row < 0) {
+            out["chainCarries"] = false
+            CoreService.log("chain: the second server is no longer in the list")
+        } else if (hard && exitIp.isNotEmpty()) {
+            // the exit must be the SECOND server's own address: the first one only carries
+            val hopIp = runCatching {
+                NativeSec.locate(row).split(';').getOrNull(0).orEmpty().trim()
+            }.getOrDefault("")
+            val carried = hopIp.isNotEmpty() && exitIp == hopIp
+            out["chainCarries"] = carried
+            CoreService.log(
+                if (carried) "chain: the traffic leaves through the second server"
+                else "chain: the first server is still the exit",
+            )
         }
 
         // 2. is plain HTTP refused? asked of an address, so the test leaks no name of its own
-        if (live && hard) {
+        if (hard) {
             val open = reachesPlainHttp()
             out["httpBlocked"] = !open
             CoreService.log(

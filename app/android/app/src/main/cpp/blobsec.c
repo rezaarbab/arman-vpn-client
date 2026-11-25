@@ -6339,8 +6339,11 @@ static void sb_outbound(sbuf *s) {
     sb_add(s, "}}");
 }
 
-static void sb_routing(sbuf *s) {
-    if (!g_priv) {
+static void sb_routing(sbuf *s, int mode) {
+    /* the rules name outbounds (dns-out, block) that only the tunnel's config carries,
+       so they cannot be handed to a probe core: a routing rule pointing at a missing tag
+       is a config the core refuses, and every flag and ping would fail with it */
+    if (!g_priv || mode != 0) {
         sb_add(s, "{\"domainStrategy\":\"AsIs\",\"rules\":[{\"type\":\"field\",\"outboundTag\":\"proxy\",\"network\":\"tcp,udp\"}]}");
         return;
     }
@@ -6501,7 +6504,7 @@ static int config_build(sbuf *s, int mode, int socksPort, const char *hop1) {
     sb_direct(s);
     if (g_priv && mode == 0) sb_priv_out(s);
     sb_add(s, "],\"routing\":");
-    sb_routing(s);
+    sb_routing(s, mode);
     if (g_priv && mode == 0) sb_dns(s);
     if (mode == 0) {
         sb_add(s, ",\"stats\":{},\"policy\":{\"levels\":{\"0\":{\"statsUserUplink\":true,\"statsUserDownlink\":true}},\"system\":{\"statsOutboundUplink\":true,\"statsOutboundDownlink\":true}}");
