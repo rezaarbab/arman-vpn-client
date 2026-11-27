@@ -15,6 +15,7 @@ class PrivacyState {
     required this.dropWhy,
     required this.dnsOn,
     required this.httpOn,
+    required this.fails,
   });
 
   final bool on;
