@@ -157,9 +157,17 @@ class CoreService : VpnService() {
         dialStarted = System.currentTimeMillis()
         log("dialing")
         try {
+            // A chained dial puts one TLS session inside another, and every inner packet then needs
+            // room for the outer wrapping too. At 1500 the inner handshake goes out as fragments,
+            // and the firewalls on the way drop fragments: the connection opens and the handshake
+            // dies with exactly the reset these measurements kept reporting. Ask for less than the
+            // path can carry. The library is told the same number where it writes the tun inbound.
+            val chained = Privacy.chainId(this).isNotEmpty() && !Privacy.dropped(this)
+            val mtu = if (chained) 1280 else 1500
+            log("tunnel: " + if (chained) "two hops, the interface takes $mtu-byte packets" else "one hop, $mtu")
             val builder = Builder()
                 .setSession("Blob")
-                .setMtu(1500)
+                .setMtu(mtu)
                 .addAddress("10.9.0.2", 32)
                 .addDnsServer("1.1.1.1")
                 .addRoute("0.0.0.0", 0)
@@ -525,6 +533,18 @@ class CoreService : VpnService() {
 
         @Volatile
         private var lastTest: Map<String, Any?>? = null
+
+        /**
+         * What the core counts, before any tag is thrown away: "tag,direction,value" per figure.
+         *
+         * The card keeps only the exit tag's numbers, which was right while one outbound carried
+         * everything. With a chain the bytes also stand under the carrier's tag, and a screen that
+         * filters by one name can say "0 B" over a tunnel that is working - so the checks ask for
+         * the raw figures and print both totals.
+         */
+        fun statsRaw(): String = runCatching {
+            instance?.controller?.queryAllOutboundTrafficStats() ?: ""
+        }.getOrDefault("")
 
         fun log(message: String) {
             synchronized(logLines) {

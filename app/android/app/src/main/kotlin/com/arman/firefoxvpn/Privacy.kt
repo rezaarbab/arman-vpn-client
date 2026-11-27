@@ -35,8 +35,15 @@ object Privacy {
     private const val ELSEWHERE = "https://get.geojs.io/v1/ip/geo.json"
     private const val ELSEWHERE_KEYS = "ip;country_code"
 
-    /** The same host on the open port the hardening is supposed to refuse. */
-    private const val PLAINTEXT = "http://get.geojs.io/v1/ip/geo.json"
+    /**
+     * The open port, asked of a page that answers 200 on it instead of redirecting away.
+     *
+     * A host that 301s to https is useless here: the client follows the redirect into another TLS
+     * handshake, so the question "did plain web traffic get through" silently becomes "did TLS get
+     * through" - which is the other line, and was the flaw behind one verdict below.
+     */
+    private const val PLAINTEXT = "http://neverssl.com/"
+    private const val PLAIN_KEYS = "ip"
 
     /** The socks inbound of the tunnel's own config. */
     private const val TUNNEL_SOCKS = 10890
@@ -303,9 +310,31 @@ object Privacy {
         // reset. Bytes that move with TLS dying is a different fault from a tunnel carrying nothing,
         // and the phone cannot tell them apart without being asked in that order.
         val t = CoreService.traffic
+        var up = 0L
+        var down = 0L
+        var figures = 0
+        for (chunk in CoreService.statsRaw().split(';')) {
+            val p = chunk.split(',')
+            if (p.size < 3) continue
+            val v = p[2].trim().toLongOrNull() ?: continue
+            figures++
+            when (p[1].trim()) {
+                "uplink" -> up += v
+                "downlink" -> down += v
+            }
+        }
+        // Both totals, because they answer different questions: the raw one says whether any byte
+        // crossed the tunnel, the card's says whether the screen can see it. A chained tunnel can
+        // move traffic the card cannot count, and then "0 B" is a blind screen, not a dead tunnel.
         lines.add(
-            "the tunnel counts " + human(t.up) + " sent and " + human(t.down) + " received since it came up" +
-                if (t.up + t.down == 0L) " - nothing has crossed it at all" else "",
+            "the core counts " + human(up) + " sent and " + human(down) + " received over " + figures +
+                " figures; the card shows " + human(t.up) + " and " + human(t.down) +
+                when {
+                    up + down > 0L && t.up + t.down == 0L ->
+                        " - the bytes moved and the card cannot see them"
+                    up + down == 0L -> " - nothing at all has crossed the tunnel"
+                    else -> ""
+                },
         )
         if (!seen.arrives && seen.plain.step != NOT_ASKED) {
             lines.add(
@@ -481,8 +510,13 @@ object Privacy {
         /** The pages say no from the phone too: this network refuses them and nothing can be judged. */
         val refusedEverywhere: Boolean get() = !arrives && !outside.answered && outside.step != NOT_ASKED
 
-        /** Whether the open port was asked of both sides, which is all that makes the next line mean anything. */
-        val httpJudged: Boolean get() = plain.step != NOT_ASKED && plainOutside.step != NOT_ASKED
+        /**
+         * Whether the open port can be judged at all: it was asked of the tunnel, and the same page
+         * came through outside it. A page this network never answers cannot be used to claim the
+         * tunnel refused it - that is how a refusal of a site became a verdict about a rule.
+         */
+        val httpJudged: Boolean
+            get() = plain.step != NOT_ASKED && (plainOutside.answered || plainOutside.carried)
 
         /**
          * Something came back through the open port. The fields need not be in it: a redirect page
@@ -504,9 +538,9 @@ object Privacy {
         // Asked whether or not the encrypted pages arrived. A page on the open port that came
         // through while both TLS pages were reset is a different fault - bytes move and handshakes
         // die - and it is only visible if the question is asked in that case rather than skipped.
-        val plain = if (askHttp) ask(PLAINTEXT, ELSEWHERE_KEYS, TUNNEL_SOCKS) else notAsked
+        val plain = if (askHttp) ask(PLAINTEXT, PLAIN_KEYS, TUNNEL_SOCKS) else notAsked
         val plainOutside =
-            if (plain.step != NOT_ASKED && !plain.answered) ask(PLAINTEXT, ELSEWHERE_KEYS, 0) else notAsked
+            if (plain.step != NOT_ASKED) ask(PLAINTEXT, PLAIN_KEYS, 0) else notAsked
         return Sight(trace, other, outside, plain, plainOutside)
     }
 

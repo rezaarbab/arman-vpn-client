@@ -6501,7 +6501,11 @@ static void trim_install(unsigned char *t, int n) {
 static int config_build(sbuf *s, int mode, int socksPort, const char *hop1) {
     sb_add(s, "{\"log\":{\"loglevel\":\"warning\"}");
     if (mode == 0) {
-        sb_add(s, ",\"inbounds\":[{\"tag\":\"tun-in\",\"protocol\":\"tun\",\"settings\":{\"name\":\"utun42\",\"desc\":\"Blob\",\"mtu\":1500}");
+        sb_add(s, ",\"inbounds\":[{\"tag\":\"tun-in\",\"protocol\":\"tun\",\"settings\":{\"name\":\"utun42\",\"desc\":\"Blob\",\"mtu\":");
+        /* the same number the interface was built with: a chained dial gives the inner packets
+           less room, because each one travels wrapped in another tunnel */
+        sb_num(s, g_dialer != NULL ? 1280 : 1500);
+        sb_add(s, "}");
         sb_sniff(s);
         sb_add(s, "},");
         sb_socks(s, 10890);
