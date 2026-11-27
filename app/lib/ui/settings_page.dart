@@ -3282,6 +3282,8 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
   String _chainName = '';
   bool _inStore = true;
   bool _dropped = false;
+  bool _connected = false;
+  String _why = '';
   List<String> _result = const [];
   bool _busy = false;
 
@@ -3309,6 +3311,8 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
           _chainName = s.chainName;
           _inStore = s.chainInStore;
           _dropped = s.dropped;
+          _connected = s.connected;
+          _why = s.dropWhy;
         });
       }
     } catch (_) {
@@ -3439,19 +3443,26 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
           onTap: _pick,
           child: const Icon(Icons.chevron_right_rounded),
         ),
-        if (_dropped && _chainId.isNotEmpty)
+        // Only while a tunnel is actually up: past that, the drop describes a connection that no
+        // longer exists, and a row about it is noise that reads as a broken setting.
+        if (_dropped && _connected && _chainId.isNotEmpty)
           _Row(
             icon: Icons.link_off_rounded,
             label: 'This hop is out of the dial',
-            value: 'nothing arrived through it, so the dial went on one server - '
-                'tap to ask for it again, used on the next connect',
-            onTap: () async {
+            value: _why == 'same-host'
+                ? 'your two servers are one machine on two ports - there is no second hop to use'
+                : _why == 'carried-nothing'
+                    ? 'nothing came through it while the tunnel was up - tap to ask once more'
+                    : 'the tunnel went on one server without it - tap to ask once more',
+            onTap: _why == 'same-host' ? _pick : () async {
               // writing the same choice back is the re-arm: the library clears the drop with it
               setState(() => _dropped = false);
               await PrivacyApi.set(on: _on, chainId: _chainId);
               await _load(over: true);
             },
-            child: const Icon(Icons.refresh_rounded),
+            child: Icon(
+              _why == 'same-host' ? Icons.swap_horiz_rounded : Icons.refresh_rounded,
+            ),
           ),
         _Row(
           icon: Icons.fact_check_outlined,

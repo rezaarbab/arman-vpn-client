@@ -11,6 +11,8 @@ class PrivacyState {
     required this.chainName,
     required this.chainInStore,
     required this.dropped,
+    required this.connected,
+    required this.dropWhy,
   });
 
   final bool on;
@@ -21,8 +23,16 @@ class PrivacyState {
   final bool chainInStore;
 
   /// The tunnel took this hop out of its dial because nothing arrived through it. The choice is
-  /// still stored: the server is named, and said to be unused, instead of quietly gone.
+  /// still stored, so the page names the server and says it is not being used.
   final bool dropped;
+
+  /// Whether the tunnel is up, which is the only moment a dropped hop is a fact about the running
+  /// connection rather than a leftover of one that ended.
+  final bool connected;
+
+  /// `same-host` when the two servers are one machine, `carried-nothing` when the hop simply did
+  /// not carry, "" when nothing was recorded.
+  final String dropWhy;
 }
 
 class PrivacyChecks {
@@ -58,6 +68,9 @@ class PrivacyChecks {
   /// The tunnel took the hop out of its dial because nothing arrived through it.
   bool get chainDropped => raw['chainDropped'] == true;
 
+  /// `same-host` / `carried-nothing` / "" - the reason the tunnel recorded with the drop.
+  String get dropWhy => '${raw['dropWhy'] ?? ''}';
+
   /// `hardening-chain-chosen`, as the library wrote it for the tunnel that is running.
   String get running => '${raw['running'] ?? ''}';
 
@@ -90,7 +103,9 @@ class PrivacyChecks {
         else if (sameHost)
           'Second hop: that is the same machine as your first server, on another port - nothing is hidden by it'
         else if (chainDropped)
-          'Second hop: the tunnel dropped it - nothing arrived through it, your choice is kept'
+          dropWhy == 'carried-nothing'
+              ? 'Second hop: the tunnel dropped it - nothing came through, your choice is kept'
+              : 'Second hop: the tunnel dropped it - your choice is kept, ask for it again when you want',
         else if (notMeasurable)
           'Second hop: the pages refuse this network from both sides - nothing can be measured now'
         else if (tunnelSilent)
@@ -136,6 +151,8 @@ class PrivacyApi {
       chainName: '${v['chainName'] ?? ''}',
       chainInStore: v['chainInStore'] == true,
       dropped: v['dropped'] == true,
+      connected: v['connected'] == true,
+      dropWhy: '${v['dropWhy'] ?? ''}',
     );
   }
 

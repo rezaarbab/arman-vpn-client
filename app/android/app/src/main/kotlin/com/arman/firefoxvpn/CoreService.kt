@@ -656,6 +656,10 @@ class CoreService : VpnService() {
             instance = null
             on = false
             connected = false
+            // a hop left out by the last dial gets its chance again on the next connect: the person
+            // asking for the tunnel is a fresh intent, and a drop that never lifts reads as a setting
+            // that broke itself, with a row saying so on every visit
+            Privacy.rearmHop(context)
             log("disconnected")
             context.stopService(Intent(context, CoreService::class.java))
             QuickTile.refresh(context)
@@ -682,7 +686,7 @@ class CoreService : VpnService() {
                 // asked before the pages, because it is decided without the network and it explains
                 // a dead chain on its own: two rows on one machine are not two hops
                 if (Privacy.sameHost(ctx)) {
-                    Privacy.dropHop(ctx)
+                    Privacy.dropHop(ctx, "same-host")
                     log("chain: the two servers are the same machine - one server carries, your choice is kept")
                     reconnect(ctx)
                     return@Thread
@@ -691,7 +695,7 @@ class CoreService : VpnService() {
                     0 -> {
                         // the choice stays stored: the dial goes without it and the page says why,
                         // which is the difference between a hop that failed and a setting lost
-                        Privacy.dropHop(ctx)
+                        Privacy.dropHop(ctx, "carried-nothing")
                         log("chain: nothing arrived through the second hop - it is out of the dial, the choice is kept")
                         reconnect(ctx)
                     }

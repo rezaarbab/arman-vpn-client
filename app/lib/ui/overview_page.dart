@@ -3325,7 +3325,8 @@ class _PrivacyHomeCardState extends State<_PrivacyHomeCard> {
         : s.chainId.isEmpty
             ? 'one server - it sees every site you open'
             : s.dropped
-                ? '${_named(s)} - out of the dial: it carried nothing'
+                ? '${_named(s)} - '
+                    '${s.dropWhy == 'same-host' ? "is the same machine as the first server" : "out of the dial: it carried nothing"}'
                 : s.chainInStore
                     ? 'out through ${_named(s)}'
                     : 'that server is no longer in the list';

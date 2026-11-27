@@ -107,10 +107,25 @@ object Privacy {
     fun dropped(context: Context): Boolean =
         prefs(context).getString("chain_off", "0") == "1"
 
-    /** Take the chosen hop out of the next dial. The tunnel says why in its own log line. */
-    fun dropHop(context: Context) {
-        if (dropped(context)) return
-        prefs(context).edit().putString("chain_off", "1").commit()
+    /** Take the chosen hop out of the next dial, with the one reason the tunnel knows. */
+    fun dropHop(context: Context, why: String) {
+        prefs(context).edit()
+            .putString("chain_off", "1")
+            .putString("chain_why", why)
+            .commit()
+    }
+
+    /** The reason recorded with the drop: `same-host` or `carried-nothing`, "" when nothing dropped. */
+    fun dropWhy(context: Context): String = prefs(context).getString("chain_why", "") ?: ""
+
+    /**
+     * Put the hop back. Called when the person switches the tunnel off, so their next connect is a
+     * fresh attempt rather than a permanent verdict: a hop that is left out forever looks exactly
+     * like a setting that broke itself, and the row that says so comes back on every visit.
+     */
+    fun rearmHop(context: Context) {
+        if (!dropped(context)) return
+        prefs(context).edit().remove("chain_off").remove("chain_why").commit()
     }
 
     /**
@@ -145,6 +160,7 @@ object Privacy {
         out["pageRefuses"] = seen.picky
         out["notMeasurable"] = seen.refusedEverywhere
         out["chainDropped"] = dropped(context)
+        out["dropWhy"] = dropWhy(context)
         out["httpBlocked"] = if (hard && seen.httpJudged) !seen.httpArrives else null
         if (id.isEmpty()) {
             out["chainCarries"] = false

@@ -174,6 +174,10 @@ class MainActivity : FlutterActivity() {
                             "chainId" to Privacy.chainId(this),
                             "chainName" to Privacy.chainName(this),
                             "dropped" to Privacy.dropped(this),
+                            // the row is about the running dial: it shows while the tunnel is up and
+                            // stops being noise the moment it is not
+                            "connected" to CoreService.on,
+                            "dropWhy" to Privacy.dropWhy(this),
                             "chainInStore" to (Privacy.chainId(this).isNotEmpty() &&
                                 runCatching {
                                     ir.v2rayng.compose.core.NativeSec.rowOf(Privacy.chainId(this))
