@@ -2,6 +2,7 @@ package com.arman.firefoxvpn
 
 import android.content.Context
 import ir.v2rayng.compose.core.NativeSec
+import libv2ray.CoreCallbackHandler
 
 /**
  * The person's own privacy switches, and the checks that prove them.
@@ -238,6 +239,72 @@ object Privacy {
         val second = hopIpOf(context, id)
         return first.isNotEmpty() && first == second
     }
+
+    /**
+     * Whether the phone's own server can carry another server's traffic - asked **without touching
+     * the running tunnel**, so a person learns it before connecting instead of by losing the internet.
+     *
+     * A short-lived core starts on the carrier row with the pair switch armed for that row only, and
+     * the library builds it exactly as it builds the tunnel's chain. The person's own choice is never
+     * written, and the switch is off again before this returns. It answers 1 when the page came
+     * through the pair, 0 when it did not, -2 when the test itself could not run - and the verdict is
+     * kept per candidate, so the picker can mark the rows that carry rather than being tried blind.
+     */
+    fun pairTest(context: Context, exitId: String): Int {
+        val carrier = CoreService.pickedId(context)
+        if (carrier.isBlank() || exitId.isBlank() || carrier == exitId) return -2
+        val carrierRow = runCatching { NativeSec.rowOf(carrier) }.getOrDefault(-1)
+        if (carrierRow < 0 || runCatching { NativeSec.rowOf(exitId) }.getOrDefault(-1) < 0) return -2
+        val p = prefs(context)
+        val port = pairPort()
+        p.edit()
+            .putString("probe_carrier", carrier)
+            .putString("probe_exit", exitId)
+            .putString("probe_chain", "1")
+            .commit()
+        val quiet = object : CoreCallbackHandler {
+            override fun startup(): Long = 0L
+            override fun shutdown(): Long = 0L
+            override fun onEmitStatus(p0: Long, p1: String?): Long = 0L
+        }
+        val handle = runCatching { NativeSec.probeStart(carrierRow, port, quiet) }.getOrDefault(0)
+        if (handle == 0) {
+            p.edit().remove("probe_chain").remove("probe_exit").remove("probe_carrier").commit()
+            CoreService.log("pair: the test core would not start - nothing measured")
+            return -2
+        }
+        return try {
+            val seen = ask(TRACE, TRACE_KEYS, port)
+            val verdict = if (seen.answered) 1 else 0
+            p.edit().putString("pc_" + exitId.take(64), verdict.toString()).commit()
+            CoreService.log(
+                if (verdict == 1) "pair: the traffic got through this second server"
+                else "pair: this second server carried nothing (at [${seen.step}])",
+            )
+            verdict
+        } finally {
+            runCatching { NativeSec.probeStop(handle) }
+            p.edit().remove("probe_chain").remove("probe_exit").remove("probe_carrier").commit()
+        }
+    }
+
+    /** The pair verdicts this phone already has, by row id: "1" carries, "0" does not. */
+    fun pairKnown(context: Context, id: String): String =
+        if (id.isBlank()) "" else prefs(context).getString("pc_" + id.take(64), "") ?: ""
+
+    /** All of them at once, for the picker to mark its rows without asking per row. */
+    fun pairVerdicts(context: Context): Map<String, String> {
+        val out = LinkedHashMap<String, String>()
+        for ((k, v) in prefs(context).all) {
+            if (k.startsWith("pc_") && v is String) out[k.removePrefix("pc_")] = v
+        }
+        return out
+    }
+
+    private val pairSeed = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** Away from the ports the flag probes use, so the two never fight over one. */
+    private fun pairPort(): Int = 23000 + (pairSeed.getAndIncrement() % 500)
 
     /**
      * Whether the tunnel is carrying, as one number: 1 when a page arrived through it, 0 when

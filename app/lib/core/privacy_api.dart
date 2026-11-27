@@ -171,4 +171,18 @@ class PrivacyApi {
     final l = await _ch.invokeListMethod<String>('blobPrivacyDebug');
     return l ?? const [];
   }
+
+  /// Whether the phone's current server can carry traffic through [exitId] as its second hop,
+  /// tested on a short-lived core so the running tunnel is never disturbed.
+  /// 1 carries, 0 does not, -2 the test could not run.
+  static Future<int> pairTest(String exitId) async {
+    final v = await _ch.invokeMethod<int>('blobPrivacyPair', {'id': exitId});
+    return v ?? -2;
+  }
+
+  /// The pair verdicts already measured on this phone, by row id.
+  static Future<Map<String, String>> pairs() async {
+    final m = await _ch.invokeMapMethod<String, String>('blobPrivacyPairs');
+    return m ?? const <String, String>{};
+  }
 }

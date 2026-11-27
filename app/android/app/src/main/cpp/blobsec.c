@@ -3319,6 +3319,15 @@ static const sblob g_sb[] = {
     { 9, {
         0xb2, 0x06, 0x6a, 0xc1, 0x2b, 0xbd, 0x10, 0x7a, 0xdf
     } },   /* chain_off */   /* index 277, round trip "chain_off" */
+    { 11, {
+        0x80, 0xff, 0x45, 0xa5, 0x01, 0x5e, 0xfd, 0x53, 0xb9, 0x1c, 0x7c
+    } },   /* probe_chain */   /* index 278, round trip "probe_chain" */
+    { 10, {
+        0xe3, 0x42, 0xa2, 0x08, 0x62, 0xfb, 0x24, 0xa6, 0x12, 0x6c
+    } },   /* probe_exit */   /* index 279, round trip "probe_exit" */
+    { 13, {
+        0xc2, 0x3d, 0x83, 0xeb, 0x43, 0x9c, 0x03, 0x9c, 0xe8, 0x45, 0xbd, 0x14, 0x7c
+    } },   /* probe_carrier */   /* index 280, round trip "probe_carrier" */
 };
 
 /** the decoded text of one entry; valid until six more have been decoded */
@@ -6239,6 +6248,11 @@ static void sb_direct(sbuf *s) {
 /* the hop the person chose, taken out of the dial without forgetting it: a second server
    that carried nothing is dropped for the next dial and stays listed as their choice */
 #define CHAIN_OFF_KEY sb(277)
+/* a pair test: which row to exit through, and the switch that says a test is asking for it.
+   Only the flag/ping probe (mode 2) reads these, and only while the test holds the switch. */
+#define PROBE_CHAIN_KEY sb(278)
+#define PROBE_EXIT_KEY sb(279)
+#define PROBE_CARRIER_KEY sb(280)
 static int g_priv = 0;
 static const char *g_tag = "proxy";
 static const char *g_dialer = NULL;
@@ -6498,6 +6512,19 @@ static void trim_install(unsigned char *t, int n) {
 }
 
 /** the config text, assembled once and shared by the file writer and the string entry */
+/** One letter for a transport, so the running shape can name the pair of transports a chain was
+ *  built on: dialerProxy wraps one connection inside another and is not known to behave the same
+ *  under every transport, and a letter costs nothing to print where an address may not. */
+static char type_letter(const char *t) {
+    if (t == NULL || t[0] == 0) return '0';
+    if (strcmp(t, "ws") == 0) return 'w';
+    if (strcmp(t, "grpc") == 0) return 'g';
+    if (strcmp(t, "tcp") == 0) return 't';
+    if (strcmp(t, "xhttp") == 0) return 'x';
+    if (strcmp(t, "httpupgrade") == 0) return 'h';
+    return '?';
+}
+
 static int config_build(sbuf *s, int mode, int socksPort, const char *hop1) {
     sb_add(s, "{\"log\":{\"loglevel\":\"warning\"}");
     if (mode == 0) {
@@ -6567,7 +6594,23 @@ static jstring cfg_text(JNIEnv *env, jclass cls, jint row, jint mode, jint socks
     free(pv);
     char chainId[PLR_ID];
     chainId[0] = 0;
-    char *cid = (mode == 0) ? pref_get_in(env, CORE_PREF, CHAIN_KEY) : NULL;
+    /* The tunnel chains what the person chose. A probe core chains what a pair test asks for, and
+       only while that test holds the switch - otherwise every ping in the list would go out through
+       the second hop, and one slow chain would be written down as a hundred dead servers. */
+    char *cid = NULL;
+    if (mode == 0) {
+        cid = pref_get_in(env, CORE_PREF, CHAIN_KEY);
+    } else if (mode == 2) {
+        char *pc = pref_get_in(env, CORE_PREF, PROBE_CHAIN_KEY);
+        char *pw = (pc != NULL && pc[0] == '1') ? pref_get_in(env, CORE_PREF, PROBE_CARRIER_KEY) : NULL;
+        free(pc);
+        /* armed for one carrier row only: the list's ping pass runs at the same moment, and a chain
+           switched on for everybody would be written down as a hundred dead servers */
+        if (pw != NULL) {
+            if (row == row_index_of_id(pw)) cid = pref_get_in(env, CORE_PREF, PROBE_EXIT_KEY);
+            free(pw);
+        }
+    }
     if (cid != NULL) { snprintf(chainId, sizeof(chainId), "%s", cid); free(cid); }
     int chosen = chainId[0] != 0;
     /* a hop the tunnel dropped is taken out of this dial and left alone as the person's choice:
@@ -6578,14 +6621,16 @@ static jstring cfg_text(JNIEnv *env, jclass cls, jint row, jint mode, jint socks
         free(off);
     }
     char *hop1 = NULL;
+    char carrierType[24] = "", exitType[24] = "";
     /* the second hop is its own choice: it does not wait for the name-hiding rules, and
        turning those off must not silently turn the chain off as well */
-    if (mode == 0 && chainId[0] != 0) {
+    if ((mode == 0 || mode == 2) && chainId[0] != 0) {
         int exitRow = row_index_of_id(chainId);
         if (exitRow >= 0 && exitRow != row) {
             /* write the carrier's outbound first, while the picked row is still the one parsed */
             sbuf h; h.b = NULL; h.n = 0; h.cap = 0;
             g_tag = "hop1";
+            snprintf(carrierType, sizeof(carrierType), "%s", pl_type);
             sb_outbound(&h);
             g_tag = "proxy";
             hop1 = h.b;
@@ -6596,6 +6641,7 @@ static jstring cfg_text(JNIEnv *env, jclass cls, jint row, jint mode, jint socks
                 if (jel != NULL) (*env)->DeleteLocalRef(env, jel);
                 if (eok == 1) {
                     g_dialer = "hop1";
+                    snprintf(exitType, sizeof(exitType), "%s", pl_type);
                 } else {
                     /* the exit row will not parse: connect on one hop instead of refusing, and
                        say which half failed - the test button reads the same fact back */
@@ -6625,7 +6671,8 @@ static jstring cfg_text(JNIEnv *env, jclass cls, jint row, jint mode, jint socks
        outlives the dial when the tunnel dropped that hop: chosen-used-picked are three facts. */
     if (mode == 0) {
         char shape[24];
-        snprintf(shape, sizeof(shape), "%d-%d-%d", g_priv, g_dialer != NULL ? 1 : 0, chosen ? 1 : 0);
+        snprintf(shape, sizeof(shape), "%d-%d-%d-%c%c", g_priv, g_dialer != NULL ? 1 : 0, chosen ? 1 : 0,
+                 type_letter(carrierType), type_letter(exitType));
         pref_put_in(env, CORE_PREF, SHAPE_KEY, shape, 0);
     }
     g_dialer = NULL;

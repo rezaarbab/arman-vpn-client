@@ -3341,6 +3341,13 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
       return;
     }
     if (!mounted) return;
+    // Which of these have already been measured as a second hop, so a row is chosen with a mark on
+    // it rather than by connecting and finding out the hard way.
+    Map<String, String> pairs = const {};
+    try {
+      pairs = await PrivacyApi.pairs();
+    } catch (_) {}
+    if (!mounted) return;
     final picked = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -3371,6 +3378,17 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
                         subtitle: (r['cat'] ?? '').isEmpty
                             ? null
                             : Text(r['cat']!, style: const TextStyle(fontSize: 12)),
+                        trailing: pairs[r['id']] == null
+                            ? null
+                            : Icon(
+                                pairs[r['id']] == '1'
+                                    ? Icons.double_arrow_rounded
+                                    : Icons.block_rounded,
+                                size: 18,
+                                color: pairs[r['id']] == '1'
+                                    ? Colors.green.shade600
+                                    : Colors.red.shade400,
+                              ),
                         onTap: () => Navigator.pop(context, r['id'] ?? ''),
                       ),
                   ],
@@ -3411,6 +3429,34 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
     }
   }
 
+  /// Asked of a short-lived core of its own: the tunnel in use is not touched, so a person can try
+  /// a pair while offline, while browsing, or before ever switching the second hop on.
+  Future<void> _pair() async {
+    if (_busy || _chainId.isEmpty) return;
+    setState(() {
+      _busy = true;
+      _result = const ['testing this pair...'];
+    });
+    int v = -2;
+    try {
+      v = await PrivacyApi.pairTest(_chainId);
+    } catch (_) {
+      v = -2;
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _result = [
+        if (v == 1)
+          'Pair: your traffic got through this second server - it is worth choosing'
+        else if (v == 0)
+          'Pair: it carried nothing - your first server chains to it but nothing arrives, so another row will do it no better'
+        else
+          'Pair: the test could not run on this phone right now',
+      ];
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -3447,6 +3493,20 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
           onTap: _pick,
           child: const Icon(Icons.chevron_right_rounded),
         ),
+        if (_chainId.isNotEmpty)
+          _Row(
+            icon: Icons.cable_rounded,
+            label: 'Try this pair first',
+            value: 'starts its own short-lived core - the tunnel you are on is not touched',
+            onTap: _pair,
+            child: _busy
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.play_arrow_rounded),
+          ),
         // A dropped hop is one word inside the row it belongs to, not a row of its own: a fact that
         // returns on every visit reads as a broken setting, and it stopped being true the moment the
         // person switched the tunnel off anyway.

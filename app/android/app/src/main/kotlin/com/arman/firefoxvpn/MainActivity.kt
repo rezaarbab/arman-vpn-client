@@ -196,6 +196,9 @@ class MainActivity : FlutterActivity() {
                 "blobPrivacyTest" -> inAsk(result) { Privacy.test(this) }
                 // every question the network can answer, in one tap
                 "blobPrivacyDebug" -> inAsk(result) { Privacy.debug(this) }
+                // does this pair carry, asked without touching the running tunnel
+                "blobPrivacyPair" -> inAsk(result) { Privacy.pairTest(this, call.argument<String>("id") ?: "") }
+                "blobPrivacyPairs" -> result.success(Privacy.pairVerdicts(this))
                 "irAdmin" -> result.success(
                     mapOf(
                         "popup" to Admin.popup(this),
