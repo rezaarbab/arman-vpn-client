@@ -21,7 +21,7 @@ object Flags {
 
     private fun port(): Int = 20000 + ((portSeed.getAndIncrement() and 0x7fffffff) % 2000)
 
-    private const val TRACE = "https://www.cloudflare.com/cdn-cgi/trace"
+    private const val TRACE = "https://www.cloudflare.com/cdn-cgi/trace?location"
 
     /** A page on other infrastructure, for the times the trace page is the one refusing. */
     private const val ELSEWHERE = "https://ipinfo.io/json"
@@ -89,7 +89,7 @@ object Flags {
         try {
             val t0 = System.nanoTime()
             // the library hands back only the asked-for words, in that order, ";"-separated
-            val parts = runCatching { NativeSec.probe(TRACE, "ip;loc", port).split(';') }
+            val parts = runCatching { NativeSec.probe(TRACE, "ip;country", port).split(';') }
                 .getOrDefault(emptyList())
             val took = ((System.nanoTime() - t0) / 1000000L).toInt()
             val ip = parts.getOrNull(0).orEmpty().trim()
@@ -215,7 +215,7 @@ object Flags {
      * "" for both means the tunnel did not answer, never that the exit is empty.
      */
     fun tunnelExit(): Map<String, String> {
-        val raw = runCatching { NativeSec.probe(TRACE, "ip;loc", TUNNEL_SOCKS) }.getOrDefault("")
+        val raw = runCatching { NativeSec.probe(TRACE, "ip;country", TUNNEL_SOCKS) }.getOrDefault("")
         // One host refusing an exit is that host, not the tunnel: the trace page closes TLS to some
         // server addresses, and a card that stops at its no says "unknown exit" while the phone
         // browses fine. The same question, asked of a page on other infrastructure, answers.
@@ -247,7 +247,7 @@ object Flags {
         out["ip"] = p.getString("my_ip", "") ?: ""
         out["cc"] = p.getString("my_cc", "") ?: ""
         if (!ask) return out
-        val parts = runCatching { NativeSec.probe(TRACE, "ip;loc", 0).split(';') }
+        val parts = runCatching { NativeSec.probe(TRACE, "ip;country", 0).split(';') }
             .getOrDefault(emptyList())
         val ip = parts.getOrNull(0).orEmpty().trim()
         val cc = parts.getOrNull(1).orEmpty().trim().uppercase()

@@ -45,8 +45,9 @@ class PrivacyChecks {
   /// The pages refuse the phone itself, tunnel or not: there is nothing here to measure.
   bool get notMeasurable => raw['notMeasurable'] == true;
 
-  /// Whose address the tunnel exits with: `hop2` means the chain carries, `hop1` means the second
-  /// hop is in the config and not in use, `other` means neither, and "" means nothing was measured.
+  /// Whose exit the tunnel answered with: `hop2`/`country2` mean the chain carries (the second
+  /// server, from that address or another of its addresses), `hop1`/`country1` mean the hop is in
+  /// the config and not in use, `other` means neither, and "" means nothing was measured.
   String get exitIs => '${raw['exitIs'] ?? ''}';
 
   /// The tunnel took the hop out of its dial because nothing arrived through it.
@@ -97,10 +98,12 @@ class PrivacyChecks {
               : 'Second hop: NOT carrying - the traffic still exits through the first server',
         if (exitIs == 'hop2')
           'Exit: the second server - the chain is carrying'
-        else if (exitIs == 'hop1')
+        else if (exitIs == 'country2')
+          'Exit: the second server, from another of its addresses - the chain is carrying'
+        else if (exitIs == 'hop1' || exitIs == 'country1')
           'Exit: the first server - the second hop is in the config and not in use'
         else if (exitIs == 'other')
-          'Exit: neither resolved address - the chain cannot be confirmed from it',
+          'Exit: neither server answers as the exit - the chain cannot be confirmed from it',
         if (httpBlocked != null)
           httpBlocked!
               ? 'Plain HTTP: refused by the tunnel'

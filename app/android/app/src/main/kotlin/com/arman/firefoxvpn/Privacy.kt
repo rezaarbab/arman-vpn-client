@@ -18,8 +18,10 @@ import ir.v2rayng.compose.core.NativeSec
  * placebo: each test asks the network something the config text cannot fake.
  */
 object Privacy {
-    private const val TRACE = "https://www.cloudflare.com/cdn-cgi/trace"
-    private const val TRACE_KEYS = "ip;loc"
+    /** `?location` because the plain trace page has no country field, and the country is the
+     *  half that still means something when the exit address is not the one a name resolves to. */
+    private const val TRACE = "https://www.cloudflare.com/cdn-cgi/trace?location"
+    private const val TRACE_KEYS = "ip;country"
 
     /**
      * A page that does not live on the first page's infrastructure, and answers the same one word.
@@ -157,19 +159,21 @@ object Privacy {
                 else "chain: not measured - nothing arrives through the tunnel",
             )
         } else {
-            val hopIp = runCatching {
-                NativeSec.locate(row).split(';').getOrNull(0).orEmpty().trim()
-            }.getOrDefault("")
-            val carried = hopIp.isNotEmpty() && seen.exit == hopIp
+            val hopIp = hopIpOf(context, id)
+            val owner = exitOwner(context, seen, hopIp)
+            val carried = owner == "hop2" || owner == "country2"
             out["chainCarries"] = carried
-            // Whichever hop the exit belongs to, when the answer says: "the first one" is a chain
-            // that was built and then not used, "the second one" is a chain that works, and
-            // "neither" is something else again - three different faults that used to print as one.
-            out["exitIs"] = if (hopIp.isNotEmpty() && seen.exit == hopIp) "hop2" else hopOwner(context, seen.exit)
+            // Which hop owns the exit, when the answer says: "the second one" is a chain that works,
+            // "the first one" is a chain built and then not used, and "other" is a third thing -
+            // three different faults that used to print as one word.
+            out["exitIs"] = owner
             if (seen.picky) say("exit: measured on the second page - the trace page refuses this exit")
             say(
-                if (carried) "chain: the traffic leaves through the second server"
-                else "chain: the exit is not the second server",
+                when {
+                    carried -> "chain: the traffic leaves through the second server"
+                    owner == "hop1" || owner == "country1" -> "chain: the exit is still the first server"
+                    else -> "chain: the exit belongs to neither server - the hop in the dial is not the way out"
+                },
             )
         }
         if (hard) {
@@ -265,14 +269,20 @@ object Privacy {
                 val hopIp = runCatching {
                     NativeSec.locate(row).split(';').getOrNull(0).orEmpty().trim()
                 }.getOrDefault("")
+                val owner = exitOwner(context, seen, hopIp)
                 lines.add(
                     when {
+                        seen.exit.isEmpty() -> "no exit could be measured to compare with"
                         hopIp.isEmpty() -> "second server: its address could not be resolved"
-                        seen.exit.isEmpty() -> "second server: it resolves, and no exit could be measured to compare with"
-                        seen.exit == hopIp -> "the exit the tunnel answers with is the second server's address"
-                        hopOwner(context, seen.exit) == "hop1" ->
+                        owner == "hop2" -> "the exit the tunnel answers with is the second server's address"
+                        owner == "country2" ->
+                            "the exit is in the second server's country, from another of its addresses - the chain is carrying"
+                        owner == "hop1" ->
                             "the exit is the FIRST server's address: the chain is in the config and not in use"
-                        else -> "the exit is neither resolved address - the chain cannot be confirmed from it"
+                        owner == "country1" ->
+                            "the exit is in the FIRST server's country: the chain is in the config and not in use"
+                        else -> "the exit is neither server's address nor either server's country - " +
+                            "the hop in the dial is not the way out, or this phone knows no country for them"
                     },
                 )
             }
@@ -299,29 +309,47 @@ object Privacy {
         else -> "$ms ms"
     }
 
-    /**
-     * Whether the address the tunnel exits with is the first server's, as one word and no address:
-     * "hop1" when it is, "other" when it is not or the server no longer resolves, "" when nothing
-     * was measured. A chain that is in the config and not in use shows here and nowhere else.
-     */
-    private fun hopOwner(context: Context, exit: String): String {
-        if (exit.isEmpty()) return ""
-        val picked = CoreService.pickedId(context)
-        if (picked.isBlank()) return "other"
-        val row = runCatching { NativeSec.rowOf(picked) }.getOrDefault(-1)
-        if (row < 0) return "other"
-        val ip = runCatching {
+    /** The address a row's own name resolves to, as the library sees it. "" when it does not. */
+    private fun hopIpOf(context: Context, id: String): String {
+        if (id.isBlank()) return ""
+        val row = runCatching { NativeSec.rowOf(id) }.getOrDefault(-1)
+        if (row < 0) return ""
+        return runCatching {
             NativeSec.locate(row).split(';').getOrNull(0).orEmpty().trim()
         }.getOrDefault("")
-        return if (ip.isNotEmpty() && ip == exit) "hop1" else "other"
     }
 
-    private class Probe(val ip: String, val answered: Boolean, val step: String) {
+    /**
+     * Whose exit the tunnel answered with, as one word and never an address: `hop2` / `hop1` when
+     * it is exactly one of their addresses, `country2` / `country1` when the address matches
+     * neither but the country matches one, `other` when neither does, "" when nothing was measured.
+     *
+     * The country half is not decoration. A box can speak from another address than the one its name
+     * resolves to - a second IP, a NAT pool, a front in front of it - and then the exact match says
+     * "neither" for a chain that is carrying. That is the difference between a broken feature and a
+     * server with two addresses, and the address test alone cannot tell them apart.
+     */
+    private fun exitOwner(context: Context, seen: Sight, hopIp: String): String {
+        val exit = seen.exit
+        if (exit.isEmpty()) return ""
+        if (hopIp.isNotEmpty() && exit == hopIp) return "hop2"
+        if (exit == hopIpOf(context, CoreService.pickedId(context))) return "hop1"
+        val cc = seen.cc
+        if (cc.length == 2) {
+            val second = Flags.of(context, chainId(context)).uppercase()
+            val first = Flags.of(context, CoreService.pickedId(context)).uppercase()
+            if (second.length == 2 && cc == second) return "country2"
+            if (first.length == 2 && cc == first && cc != second) return "country1"
+        }
+        return "other"
+    }
+
+    private class Probe(val ip: String, val cc: String, val answered: Boolean, val step: String) {
         override fun toString(): String = ip
     }
 
     /** A question this run had no reason to ask: the lines that read it say so instead of "no". */
-    private val notAsked = Probe("", false, NOT_ASKED)
+    private val notAsked = Probe("", "", false, NOT_ASKED)
 
     /**
      * What the tunnel and the phone answered, kept as answers rather than as conclusions: every
@@ -336,6 +364,9 @@ object Privacy {
     ) {
         /** The address the traffic leaves with, from whichever page answered. */
         val exit: String get() = if (trace.ip.isNotEmpty()) trace.ip else other.ip
+
+        /** The country of that exit, from the same page that gave the address. */
+        val cc: String get() = if (trace.ip.isNotEmpty()) trace.cc else other.cc
 
         /** Something came back through the tunnel, whichever page it was. */
         val arrives: Boolean get() = trace.answered || other.answered
@@ -385,8 +416,10 @@ object Privacy {
     private fun ask(url: String, keys: String, port: Int): Probe {
         val raw = runCatching { NativeSec.probe(url, keys, port) }.getOrDefault("")
         val step = runCatching { NativeSec.errInfo() }.getOrDefault("")
-        val ip = if (raw.isEmpty()) "" else raw.split(';').getOrNull(0).orEmpty().trim()
-        return Probe(ip, ip.isNotEmpty(), step.ifBlank { if (ip.isEmpty()) "no-answer" else "ok" })
+        val parts = if (raw.isEmpty()) emptyList() else raw.split(';')
+        val ip = parts.getOrNull(0).orEmpty().trim()
+        val cc = parts.getOrNull(1).orEmpty().trim().uppercase()
+        return Probe(ip, cc, ip.isNotEmpty(), step.ifBlank { if (ip.isEmpty()) "no-answer" else "ok" })
     }
 
     /**
