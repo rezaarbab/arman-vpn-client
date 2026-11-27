@@ -3435,35 +3435,21 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
           label: 'Exit through a second server',
           value: _chainId.isEmpty
               ? 'the first server sees every site you open'
-              : _inStore
-                  ? _chainName.isEmpty
-                      ? 'chosen - it is no longer named in the list'
-                      : _chainName
-                  : 'that server is no longer in the list',
+              : !_inStore
+                  ? 'that server is no longer in the list'
+                  : _dropped && _connected
+                      ? '${_chainName.isEmpty ? "the chosen hop" : _chainName} - out of the dial'
+                          ' (${_why == 'same-host' ? "same machine as the first" : "nothing came through"}),'
+                          ' pick it again to retry'
+                      : _chainName.isEmpty
+                          ? 'chosen - it is no longer named in the list'
+                          : _chainName,
           onTap: _pick,
           child: const Icon(Icons.chevron_right_rounded),
         ),
-        // Only while a tunnel is actually up: past that, the drop describes a connection that no
-        // longer exists, and a row about it is noise that reads as a broken setting.
-        if (_dropped && _connected && _chainId.isNotEmpty)
-          _Row(
-            icon: Icons.link_off_rounded,
-            label: 'This hop is out of the dial',
-            value: _why == 'same-host'
-                ? 'your two servers are one machine on two ports - there is no second hop to use'
-                : _why == 'carried-nothing'
-                    ? 'nothing came through it while the tunnel was up - tap to ask once more'
-                    : 'the tunnel went on one server without it - tap to ask once more',
-            onTap: _why == 'same-host' ? _pick : () async {
-              // writing the same choice back is the re-arm: the library clears the drop with it
-              setState(() => _dropped = false);
-              await PrivacyApi.set(on: _on, chainId: _chainId);
-              await _load(over: true);
-            },
-            child: Icon(
-              _why == 'same-host' ? Icons.swap_horiz_rounded : Icons.refresh_rounded,
-            ),
-          ),
+        // A dropped hop is one word inside the row it belongs to, not a row of its own: a fact that
+        // returns on every visit reads as a broken setting, and it stopped being true the moment the
+        // person switched the tunnel off anyway.
         _Row(
           icon: Icons.fact_check_outlined,
           label: 'Run the checks',
