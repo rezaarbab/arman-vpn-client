@@ -162,10 +162,16 @@ object Privacy {
             )
         } else {
             val hopIp = hopIpOf(context, id)
-            val owner = exitOwner(context, seen, hopIp)
-            val carried = owner == "hop2" || owner == "country2"
+            val owner = exitOwner(
+                context,
+                seen,
+                hopIp,
+                Flags.egressOf(context, id),
+                Flags.egressOf(context, CoreService.pickedId(context)),
+            )
+            val carried = owner == "hop2-out" || owner == "hop2-dns" || owner == "country2"
             out["chainCarries"] = carried
-            // Which hop owns the exit, when the answer says: "the second one" is a chain that works,
+            // Which hop owns the exit, and on which test: "the second one" is a chain that works,
             // "the first one" is a chain built and then not used, and "other" is a third thing -
             // three different faults that used to print as one word.
             out["exitIs"] = owner
@@ -173,7 +179,8 @@ object Privacy {
             say(
                 when {
                     carried -> "chain: the traffic leaves through the second server"
-                    owner == "hop1" || owner == "country1" -> "chain: the exit is still the first server"
+                    owner == "hop1-out" || owner == "hop1-dns" || owner == "country1" ->
+                        "chain: the exit is still the first server"
                     else -> "chain: the exit belongs to neither server - the hop in the dial is not the way out"
                 },
             )
@@ -258,36 +265,50 @@ object Privacy {
         }
 
         val picked = CoreService.pickedId(context)
+        val id = chainId(context)
+        val row = if (id.isNotEmpty()) runCatching { NativeSec.rowOf(id) }.getOrDefault(-1) else -1
+        // Measured before they are compared, on purpose: each of these is also what writes down the
+        // address that row's own traffic is seen from, and that - not the resolved name - is the
+        // only thing the exit can be matched against to say "this is that server" for certain.
         if (picked.isNotBlank()) {
             lines.add("first server, measured alone: " + delayWord(Flags.delay(context, picked)))
         }
-        val id = chainId(context)
-        if (id.isNotEmpty()) {
-            val row = runCatching { NativeSec.rowOf(id) }.getOrDefault(-1)
-            if (row < 0) {
-                lines.add("second server: not in the list any more")
-            } else {
-                lines.add("second server, measured alone: " + delayWord(Flags.delay(context, id)))
-                val hopIp = runCatching {
-                    NativeSec.locate(row).split(';').getOrNull(0).orEmpty().trim()
-                }.getOrDefault("")
-                val owner = exitOwner(context, seen, hopIp)
-                lines.add(
-                    when {
-                        seen.exit.isEmpty() -> "no exit could be measured to compare with"
-                        hopIp.isEmpty() -> "second server: its address could not be resolved"
-                        owner == "hop2" -> "the exit the tunnel answers with is the second server's address"
-                        owner == "country2" ->
-                            "the exit is in the second server's country, from another of its addresses - the chain is carrying"
-                        owner == "hop1" ->
-                            "the exit is the FIRST server's address: the chain is in the config and not in use"
-                        owner == "country1" ->
-                            "the exit is in the FIRST server's country: the chain is in the config and not in use"
-                        else -> "the exit is neither server's address nor either server's country - " +
-                            "the hop in the dial is not the way out, or this phone knows no country for them"
-                    },
-                )
-            }
+        if (id.isNotEmpty() && row < 0) {
+            lines.add("second server: not in the list any more")
+        } else if (row >= 0) {
+            lines.add("second server, measured alone: " + delayWord(Flags.delay(context, id)))
+        }
+        val hopIp = if (row >= 0) hopIpOf(context, id) else ""
+        val owner = exitOwner(
+            context,
+            seen,
+            hopIp,
+            if (row >= 0) Flags.egressOf(context, id) else "",
+            Flags.egressOf(context, picked),
+        )
+        lines.add(
+            when {
+                seen.exit.isEmpty() -> "no exit could be measured to compare with"
+                row < 0 -> "nothing to compare the exit with - no second server is chosen"
+                owner == "hop2-out" ->
+                    "the exit is the address the second server answers from on its own: the chain carries, and it is that box"
+                owner == "hop2-dns" ->
+                    "the exit is the address the second server's name resolves to: the chain carries"
+                owner == "country2" ->
+                    "the exit is in the second server's country, from an address neither test names: the chain is carrying"
+                owner == "hop1-out" || owner == "hop1-dns" ->
+                    "the exit is the FIRST server's own address: the chain is in the dial and not in use"
+                owner == "country1" ->
+                    "the exit is in the FIRST server's country: the chain is in the dial and not in use"
+                else -> "the exit is neither server's address nor either server's country - " +
+                    "the hop in the dial is not the way out"
+            },
+        )
+        if (owner == "hop2-out" && hopIp.isNotEmpty() && hopIp != Flags.egressOf(context, id)) {
+            lines.add(
+                "that server answers from a different address than the one its name resolves to - " +
+                    "which is why the address test alone could not decide it",
+            )
         }
         if (shape.split('-').getOrNull(1) == "1" && seen.silent) {
             lines.add("the chain is in the config and the tunnel carries nothing - turn the second hop off until this is fixed")
@@ -322,20 +343,29 @@ object Privacy {
     }
 
     /**
-     * Whose exit the tunnel answered with, as one word and never an address: `hop2` / `hop1` when
-     * it is exactly one of their addresses, `country2` / `country1` when the address matches
-     * neither but the country matches one, `other` when neither does, "" when nothing was measured.
+     * Whose exit the tunnel answered with, as one word and never an address.
      *
-     * The country half is not decoration. A box can speak from another address than the one its name
-     * resolves to - a second IP, a NAT pool, a front in front of it - and then the exact match says
-     * "neither" for a chain that is carrying. That is the difference between a broken feature and a
-     * server with two addresses, and the address test alone cannot tell them apart.
+     * The order is the strength of the evidence. Each row's **own egress** comes first: it is the
+     * same measurement on both sides - a page naming the address that row's traffic left with - so
+     * a match says "this exit is that box" rather than "near it". The address the name resolves to
+     * is the weaker second test, since a server can answer from another address than the one it is
+     * reached at, and the country is the weakest: good for "the hop is in use", nothing more.
+     *
+     * `hop2-out` `hop1-out` `hop2-dns` `hop1-dns` `country2` `country1` `other`, "" unmeasured.
      */
-    private fun exitOwner(context: Context, seen: Sight, hopIp: String): String {
+    private fun exitOwner(
+        context: Context,
+        seen: Sight,
+        hopIp: String,
+        hopOut: String,
+        firstOut: String,
+    ): String {
         val exit = seen.exit
         if (exit.isEmpty()) return ""
-        if (hopIp.isNotEmpty() && exit == hopIp) return "hop2"
-        if (exit == hopIpOf(context, CoreService.pickedId(context))) return "hop1"
+        if (hopOut.isNotEmpty() && exit == hopOut) return "hop2-out"
+        if (firstOut.isNotEmpty() && exit == firstOut) return "hop1-out"
+        if (hopIp.isNotEmpty() && exit == hopIp) return "hop2-dns"
+        if (exit == hopIpOf(context, CoreService.pickedId(context))) return "hop1-dns"
         val cc = seen.cc
         if (cc.length == 2) {
             val second = Flags.of(context, chainId(context)).uppercase()

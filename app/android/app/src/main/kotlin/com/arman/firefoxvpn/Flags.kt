@@ -170,6 +170,17 @@ object Flags {
     }
 
     /**
+     * The address the world sees this row's traffic coming from, from the last measurement of it.
+     *
+     * A name resolves to where a box is *reached*, which is not always where it *answers* from -
+     * a second IP, a gateway, a NAT pool. A page reports the answer, so comparing a tunnel's exit
+     * to that, both sides measured the same way, is the only test that can say "this exit is that
+     * server" rather than "this exit is somewhere in its country".
+     */
+    fun egressOf(context: Context, id: String): String =
+        if (id.isBlank()) "" else prefs(context).getString("pi_" + id.take(64), "") ?: ""
+
+    /**
      * The picked row's own answers: delay, exit country and exit IP, from one core. The home
      * card is the one place that shows the answer right away, so it is asked once.
      */

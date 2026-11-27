@@ -45,9 +45,10 @@ class PrivacyChecks {
   /// The pages refuse the phone itself, tunnel or not: there is nothing here to measure.
   bool get notMeasurable => raw['notMeasurable'] == true;
 
-  /// Whose exit the tunnel answered with: `hop2`/`country2` mean the chain carries (the second
-  /// server, from that address or another of its addresses), `hop1`/`country1` mean the hop is in
-  /// the config and not in use, `other` means neither, and "" means nothing was measured.
+  /// Whose exit the tunnel answered with, and on which test: `hop2-out` (that server's own egress,
+  /// the strongest match), `hop2-dns`, `country2` all mean the chain carries; `hop1-out`,
+  /// `hop1-dns`, `country1` mean the hop is in the config and not in use; `other` means neither;
+  /// "" means nothing was measured.
   String get exitIs => '${raw['exitIs'] ?? ''}';
 
   /// The tunnel took the hop out of its dial because nothing arrived through it.
@@ -96,12 +97,16 @@ class PrivacyChecks {
           chainCarries
               ? 'Second hop: the traffic leaves through it - the first server sees one destination'
               : 'Second hop: NOT carrying - the traffic still exits through the first server',
-        if (exitIs == 'hop2')
-          'Exit: the second server - the chain is carrying'
+        if (exitIs == 'hop2-out')
+          'Exit: the second server - the exact address it answers from on its own, so the chain carries'
+        else if (exitIs == 'hop2-dns')
+          'Exit: the second server, by the address its name resolves to - the chain carries'
         else if (exitIs == 'country2')
           'Exit: the second server, from another of its addresses - the chain is carrying'
-        else if (exitIs == 'hop1' || exitIs == 'country1')
+        else if (exitIs == 'hop1-out' || exitIs == 'hop1-dns')
           'Exit: the first server - the second hop is in the config and not in use'
+        else if (exitIs == 'country1')
+          'Exit: the first server, by country - the second hop is not in use'
         else if (exitIs == 'other')
           'Exit: neither server answers as the exit - the chain cannot be confirmed from it',
         if (httpBlocked != null)
