@@ -246,7 +246,7 @@ object Privacy {
             return lines
         }
 
-        val seen = look(on(context))
+        val seen = look(true)
         lines.add("trace page, through the tunnel: " + said(seen.trace))
         lines.add("another page, through the tunnel: " + said(seen.other))
         if (seen.outside.step != NOT_ASKED) {
@@ -262,6 +262,23 @@ object Privacy {
         )
         if (seen.arrives && !seen.trace.answered) {
             lines.add("the trace page refuses what the tunnel exits with, another page accepts it - one host saying no is that host")
+        }
+        // "it connects but nothing moves" needs two numbers before anything else: what the core
+        // counts as carried, and whether the open port gets through when the encrypted pages were
+        // reset. Bytes that move with TLS dying is a different fault from a tunnel carrying nothing,
+        // and the phone cannot tell them apart without being asked in that order.
+        val t = CoreService.traffic
+        lines.add(
+            "the tunnel counts " + human(t.up) + " sent and " + human(t.down) + " received since it came up" +
+                if (t.up + t.down == 0L) " - nothing has crossed it at all" else "",
+        )
+        if (!seen.arrives && seen.plain.step != NOT_ASKED) {
+            lines.add(
+                if (seen.httpArrives)
+                    "the open port came through while both encrypted pages were reset - bytes get through the chain and TLS does not"
+                else
+                    "nothing comes through the chain at all, the open page included - the second hop is not carrying this tunnel",
+            )
         }
 
         val picked = CoreService.pickedId(context)
@@ -311,7 +328,10 @@ object Privacy {
             )
         }
         if (shape.split('-').getOrNull(1) == "1" && seen.silent) {
-            lines.add("the chain is in the config and the tunnel carries nothing - turn the second hop off until this is fixed")
+            lines.add(
+                "the chain is in the running config and carries nothing - the tunnel drops it after this measurement " +
+                    "and reconnects on one server; re-ask for the hop here when you want it tried again",
+            )
         }
         if (on(context)) {
             lines.add(
@@ -376,12 +396,20 @@ object Privacy {
         return "other"
     }
 
-    private class Probe(val ip: String, val cc: String, val answered: Boolean, val step: String) {
+    /**
+     * One page's answer.
+     *
+     * `carried` is not the same fact as `answered`: the library keeps the **first** exception of a
+     * call in its error text and clears it only when asked, so an answer with no `last=` in it means
+     * the stream was read to its end and the fields simply were not in the body. That is a page
+     * arriving - which is the difference between a chain carrying bytes and a chain carrying nothing.
+     */
+    private class Probe(val ip: String, val cc: String, val answered: Boolean, val carried: Boolean, val step: String) {
         override fun toString(): String = ip
     }
 
     /** A question this run had no reason to ask: the lines that read it say so instead of "no". */
-    private val notAsked = Probe("", "", false, NOT_ASKED)
+    private val notAsked = Probe("", "", false, false, NOT_ASKED)
 
     /**
      * What the tunnel and the phone answered, kept as answers rather than as conclusions: every
@@ -415,7 +443,11 @@ object Privacy {
         /** Whether the open port was asked of both sides, which is all that makes the next line mean anything. */
         val httpJudged: Boolean get() = plain.step != NOT_ASKED && plainOutside.step != NOT_ASKED
 
-        val httpArrives: Boolean get() = plain.answered
+        /**
+         * Something came back through the open port. The fields need not be in it: a redirect page
+         * is still a page carried, and the hardening rule is about the port, not about the body.
+         */
+        val httpArrives: Boolean get() = plain.answered || plain.carried
     }
 
     /**
@@ -428,8 +460,10 @@ object Privacy {
         val other = if (trace.answered) notAsked else ask(ELSEWHERE, ELSEWHERE_KEYS, TUNNEL_SOCKS)
         val arrived = trace.answered || other.answered
         val outside = if (arrived) notAsked else askDirect()
-        val plain =
-            if (arrived && askHttp) ask(PLAINTEXT, ELSEWHERE_KEYS, TUNNEL_SOCKS) else notAsked
+        // Asked whether or not the encrypted pages arrived. A page on the open port that came
+        // through while both TLS pages were reset is a different fault - bytes move and handshakes
+        // die - and it is only visible if the question is asked in that case rather than skipped.
+        val plain = if (askHttp) ask(PLAINTEXT, ELSEWHERE_KEYS, TUNNEL_SOCKS) else notAsked
         val plainOutside =
             if (plain.step != NOT_ASKED && !plain.answered) ask(PLAINTEXT, ELSEWHERE_KEYS, 0) else notAsked
         return Sight(trace, other, outside, plain, plainOutside)
@@ -451,7 +485,10 @@ object Privacy {
         val parts = if (raw.isEmpty()) emptyList() else raw.split(';')
         val ip = parts.getOrNull(0).orEmpty().trim()
         val cc = parts.getOrNull(1).orEmpty().trim().uppercase()
-        return Probe(ip, cc, ip.isNotEmpty(), step.ifBlank { if (ip.isEmpty()) "no-answer" else "ok" })
+        // the library names the first exception it saw, and only that one: no exception means the
+        // stream was read, whatever came in it
+        val carried = step.isNotEmpty() && !step.contains("last=")
+        return Probe(ip, cc, ip.isNotEmpty(), carried, step.ifBlank { if (ip.isEmpty()) "no-answer" else "ok" })
     }
 
     /**
