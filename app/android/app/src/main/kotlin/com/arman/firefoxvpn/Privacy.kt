@@ -139,6 +139,7 @@ object Privacy {
         val seen = look(hard)
         val row = if (id.isNotEmpty()) runCatching { NativeSec.rowOf(id) }.getOrDefault(-1) else -1
         out["chainInStore"] = row >= 0
+        out["sameHost"] = id.isNotEmpty() && sameHost(context)
         out["exitKnown"] = seen.exit.isNotEmpty()
         out["tunnelSilent"] = seen.silent
         out["pageRefuses"] = seen.picky
@@ -154,6 +155,9 @@ object Privacy {
         } else if (row < 0) {
             out["chainCarries"] = false
             say("chain: the second server is no longer in the list")
+        } else if (out["sameHost"] == true) {
+            out["chainCarries"] = false
+            say("chain: the second server is the same machine as the first - there is no second hop there")
         } else if (seen.exit.isEmpty()) {
             out["chainCarries"] = false
             say(
@@ -195,6 +199,21 @@ object Privacy {
             )
         }
         return out
+    }
+
+    /**
+     * Whether the two chosen servers are one machine reached on two ports.
+     *
+     * A scraped list is full of them: one host selling twenty rows. Chosen as a second hop it adds
+     * nothing to hide and nothing to gain - the same box is on both sides - and it is a common
+     * mistake to make by accident, so it is named instead of failing as a mystery.
+     */
+    fun sameHost(context: Context): Boolean {
+        val id = chainId(context)
+        if (id.isEmpty()) return false
+        val first = hopIpOf(context, CoreService.pickedId(context))
+        val second = hopIpOf(context, id)
+        return first.isNotEmpty() && first == second
     }
 
     /**
@@ -284,6 +303,12 @@ object Privacy {
         val picked = CoreService.pickedId(context)
         val id = chainId(context)
         val row = if (id.isNotEmpty()) runCatching { NativeSec.rowOf(id) }.getOrDefault(-1) else -1
+        if (sameHost(context)) {
+            lines.add(
+                "the second server is the same machine as the first, on another port - " +
+                    "a second hop there hides nothing from anyone, and the box itself may refuse it",
+            )
+        }
         // Measured before they are compared, on purpose: each of these is also what writes down the
         // address that row's own traffic is seen from, and that - not the resolved name - is the
         // only thing the exit can be matched against to say "this is that server" for certain.

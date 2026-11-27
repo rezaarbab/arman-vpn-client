@@ -679,6 +679,14 @@ class CoreService : VpnService() {
             if (chainJudged) return
             chainJudged = true
             Thread {
+                // asked before the pages, because it is decided without the network and it explains
+                // a dead chain on its own: two rows on one machine are not two hops
+                if (Privacy.sameHost(ctx)) {
+                    Privacy.dropHop(ctx)
+                    log("chain: the two servers are the same machine - one server carries, your choice is kept")
+                    reconnect(ctx)
+                    return@Thread
+                }
                 when (Privacy.carries(ctx)) {
                     0 -> {
                         // the choice stays stored: the dial goes without it and the page says why,

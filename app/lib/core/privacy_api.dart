@@ -45,6 +45,10 @@ class PrivacyChecks {
   /// The pages refuse the phone itself, tunnel or not: there is nothing here to measure.
   bool get notMeasurable => raw['notMeasurable'] == true;
 
+  /// Both rows are the same machine reached on different ports, so the "second hop" is one box
+  /// carrying itself - it hides nothing, and the box may refuse to do it at all.
+  bool get sameHost => raw['sameHost'] == true;
+
   /// Whose exit the tunnel answered with, and on which test: `hop2-out` (that server's own egress,
   /// the strongest match), `hop2-dns`, `country2` all mean the chain carries; `hop1-out`,
   /// `hop1-dns`, `country1` mean the hop is in the config and not in use; `other` means neither;
@@ -83,6 +87,8 @@ class PrivacyChecks {
           'Second hop: that server is no longer in the list - pick it again'
         else if (!connected)
           'Second hop: connect first - nothing can be measured while it is off'
+        else if (sameHost)
+          'Second hop: that is the same machine as your first server, on another port - nothing is hidden by it'
         else if (chainDropped)
           'Second hop: the tunnel dropped it - nothing arrived through it, your choice is kept'
         else if (notMeasurable)
