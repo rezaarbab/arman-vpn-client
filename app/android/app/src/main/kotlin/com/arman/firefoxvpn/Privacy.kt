@@ -101,8 +101,11 @@ object Privacy {
             .putString("privacy", if (enabled) "1" else "0")
             .putString("chain_id", id)
             // whoever touches this choice again gets the hop back: a drop is the tunnel's
-            // judgement about one dial, not a permanent verdict on the server
+            // judgement about one dial, not a permanent verdict on the server - and a new choice
+            // starts its own count of failures
             .putString("chain_off", "0")
+            .remove("chain_why")
+            .remove("chain_fails")
             .commit()
         if (was != enabled) CoreService.log(if (enabled) "privacy: on" else "privacy: off")
         if (wasChain != id) CoreService.log("privacy: second hop changed")
@@ -128,13 +131,31 @@ object Privacy {
     fun dropWhy(context: Context): String = prefs(context).getString("chain_why", "") ?: ""
 
     /**
-     * Put the hop back. Called when the person switches the tunnel off, so their next connect is a
-     * fresh attempt rather than a permanent verdict: a hop that is left out forever looks exactly
-     * like a setting that broke itself, and the row that says so comes back on every visit.
+     * Put the hop back - unless it has already failed three times, in which case the person is
+     * done with it and the next connect should not cost them eight more seconds of a dead tunnel.
+     * A new choice clears the count, so the record is about this pair, not about the feature.
      */
     fun rearmHop(context: Context) {
         if (!dropped(context)) return
-        prefs(context).edit().remove("chain_off").remove("chain_why").commit()
+        if (hopFails(context) >= 3) return
+        prefs(context).edit().remove("chain_off").remove("chain_why").remove("chain_fails").commit()
+    }
+
+    /** How many times this pair was dialed and carried nothing. */
+    fun hopFails(context: Context): Int =
+        runCatching { prefs(context).getString("chain_fails", "0")!!.toInt() }.getOrDefault(0)
+
+    /** One more failure, and whether that was the last one the tunnel will attempt. */
+    fun noteDrop(context: Context): Int {
+        val n = hopFails(context) + 1
+        prefs(context).edit().putString("chain_fails", n.toString()).commit()
+        return n
+    }
+
+    /** Stop asking, without waiting for three tries: for a pair that cannot be two hops at all,
+     *  every attempt is eight seconds of a tunnel that carries nothing. */
+    fun giveUpHop(context: Context) {
+        prefs(context).edit().putString("chain_fails", "3").commit()
     }
 
     /**

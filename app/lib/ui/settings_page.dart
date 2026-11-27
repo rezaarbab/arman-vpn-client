@@ -3286,6 +3286,7 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
   String _why = '';
   bool _coreDns = true;
   bool _blockHttp = true;
+  int _fails = 0;
   List<String> _result = const [];
   bool _busy = false;
 
@@ -3317,6 +3318,7 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
           _why = s.dropWhy;
           _coreDns = s.dnsOn;
           _blockHttp = s.httpOn;
+          _fails = s.fails;
         });
       }
     } catch (_) {
@@ -3465,6 +3467,11 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final muted = theme.colorScheme.onSurfaceVariant;
+    final hop = _chainName.isEmpty ? 'the chosen hop' : _chainName;
+    final droppedWord = _why == 'same-host'
+        ? '$hop - the same machine as your first server'
+        : '$hop - carried nothing $_fails of 3'
+            '${_fails >= 3 ? ", so the tunnel stopped asking it" : ""}';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -3519,9 +3526,7 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
               : !_inStore
                   ? 'that server is no longer in the list'
                   : _dropped && _connected
-                      ? '${_chainName.isEmpty ? "the chosen hop" : _chainName} - out of the dial'
-                          ' (${_why == 'same-host' ? "same machine as the first" : "nothing came through"}),'
-                          ' pick it again to retry'
+                      ? '$droppedWord - pick it again to retry'
                       : _chainName.isEmpty
                           ? 'chosen - it is no longer named in the list'
                           : _chainName,

@@ -180,6 +180,7 @@ class MainActivity : FlutterActivity() {
                             "dropWhy" to Privacy.dropWhy(this),
                             "dnsOn" to Privacy.dnsOn(this),
                             "httpOn" to Privacy.httpOn(this),
+                            "fails" to Privacy.hopFails(this),
                             "chainInStore" to (Privacy.chainId(this).isNotEmpty() &&
                                 runCatching {
                                     ir.v2rayng.compose.core.NativeSec.rowOf(Privacy.chainId(this))

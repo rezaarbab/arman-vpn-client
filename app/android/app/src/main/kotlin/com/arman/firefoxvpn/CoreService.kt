@@ -707,7 +707,9 @@ class CoreService : VpnService() {
                 // a dead chain on its own: two rows on one machine are not two hops
                 if (Privacy.sameHost(ctx)) {
                     Privacy.dropHop(ctx, "same-host")
-                    log("chain: the two servers are the same machine - one server carries, your choice is kept")
+                    // no retry counting: one answer is enough for a pair that cannot be two hops
+                    Privacy.giveUpHop(ctx)
+                    log("chain: the two servers are the same machine - one server carries, and the tunnel will not ask again")
                     reconnect(ctx)
                     return@Thread
                 }
@@ -716,7 +718,12 @@ class CoreService : VpnService() {
                         // the choice stays stored: the dial goes without it and the page says why,
                         // which is the difference between a hop that failed and a setting lost
                         Privacy.dropHop(ctx, "carried-nothing")
-                        log("chain: nothing arrived through the second hop - it is out of the dial, the choice is kept")
+                        val n = Privacy.noteDrop(ctx)
+                        log(
+                            "chain: nothing arrived through the second hop (attempt $n of 3)" +
+                                if (n >= 3) " - the tunnel stops asking this pair, choose another second server"
+                                else " - out of the dial, your choice is kept",
+                        )
                         reconnect(ctx)
                     }
                     1 -> log("chain: a page arrived through the second hop")

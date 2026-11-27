@@ -40,6 +40,9 @@ class PrivacyState {
   /// being refused. One of them can be the reason a phone suddenly loads nothing.
   final bool dnsOn;
   final bool httpOn;
+
+  /// How many dials this pair was dropped after. Three is where the tunnel stops asking.
+  final int fails;
 }
 
 class PrivacyChecks {
@@ -162,6 +165,7 @@ class PrivacyApi {
       dropWhy: '${v['dropWhy'] ?? ''}',
       dnsOn: v['dnsOn'] != false,
       httpOn: v['httpOn'] != false,
+      fails: (v['fails'] as int?) ?? 0,
     );
   }
 
