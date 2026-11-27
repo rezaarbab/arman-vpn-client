@@ -377,32 +377,23 @@ object Privacy {
         // reset. Bytes that move with TLS dying is a different fault from a tunnel carrying nothing,
         // and the phone cannot tell them apart without being asked in that order.
         val t = CoreService.traffic
-        var up = 0L
-        var down = 0L
-        var figures = 0
+        // The card's session totals are the only byte numbers worth printing: the library's own
+        // query returns what moved since the last query, and the one-second ticker has already read
+        // that by the time a page asks - summing it here once printed "0 B" beside a card showing
+        // kilobytes, and the contradiction belonged to the measuring, not to the tunnel.
+        // What the raw text is good for is the names, and ours are fixed config tags, no server.
+        val tags = LinkedHashSet<String>()
         for (chunk in CoreService.statsRaw().split(';')) {
             val p = chunk.split(',')
-            if (p.size < 3) continue
-            val v = p[2].trim().toLongOrNull() ?: continue
-            figures++
-            when (p[1].trim()) {
-                "uplink" -> up += v
-                "downlink" -> down += v
-            }
+            if (p.size >= 3 && p[0].trim().isNotEmpty()) tags.add(p[0].trim())
         }
-        // Both totals, because they answer different questions: the raw one says whether any byte
-        // crossed the tunnel, the card's says whether the screen can see it. A chained tunnel can
-        // move traffic the card cannot count, and then "0 B" is a blind screen, not a dead tunnel.
         lines.add(
-            "the core counts " + human(up) + " sent and " + human(down) + " received over " + figures +
-                " figures; the card shows " + human(t.up) + " and " + human(t.down) +
-                when {
-                    up + down > 0L && t.up + t.down == 0L ->
-                        " - the bytes moved and the card cannot see them"
-                    up + down == 0L -> " - nothing at all has crossed the tunnel"
-                    else -> ""
-                },
+            "this session carried " + human(t.up) + " sent and " + human(t.down) + " received" +
+                if (t.up + t.down == 0L) " - nothing has crossed it" else "",
         )
+        if (tags.isNotEmpty()) {
+            lines.add("the core reports traffic for the tags " + tags.joinToString(", "))
+        }
         if (!seen.arrives && seen.plain.step != NOT_ASKED) {
             lines.add(
                 if (seen.httpArrives)
