@@ -21,10 +21,10 @@ object Flags {
 
     private fun port(): Int = 20000 + ((portSeed.getAndIncrement() and 0x7fffffff) % 2000)
 
-    private const val TRACE = "https://www.cloudflare.com/cdn-cgi/trace?location"
+    private const val TRACE = "https://www.cloudflare.com/cdn-cgi/trace"
 
     /** A page on other infrastructure, for the times the trace page is the one refusing. */
-    private const val ELSEWHERE = "https://ipinfo.io/json"
+    private const val ELSEWHERE = "https://get.geojs.io/v1/ip/geo.json"
 
     /** The socks inbound of the tunnel's own config, set by the library when it builds it. */
     private const val TUNNEL_SOCKS = 10890
@@ -89,16 +89,21 @@ object Flags {
         try {
             val t0 = System.nanoTime()
             // the library hands back only the asked-for words, in that order, ";"-separated
-            val parts = runCatching { NativeSec.probe(TRACE, "ip;country", port).split(';') }
+            val parts = runCatching { NativeSec.probe(TRACE, "ip;loc", port).split(';') }
                 .getOrDefault(emptyList())
             val took = ((System.nanoTime() - t0) / 1000000L).toInt()
             val ip = parts.getOrNull(0).orEmpty().trim()
             val cc = parts.getOrNull(1).orEmpty().trim().uppercase()
             if (parts.isEmpty()) return Triple(-2, "", "")
-            // a round trip counts only when the page really answered through this server: a
-            // handshake that finishes without carrying anything is not a delay, and the core's
-            // own outbound measurement did report exactly that as a fine number
-            val ms = if (cc.length != 2 || took < 10) -1 else took
+            // A round trip counts when the page came through this server: a handshake that finishes
+            // without carrying anything is not a delay. The country is a separate fact - an edge
+            // that answers without a two-letter loc is still a page read, and reading that as a dead
+            // row is how a whole list once went dead at the same moment.
+            val ms = when {
+                ip.isEmpty() -> -1
+                took < 10 -> -1
+                else -> took
+            }
             if (cc.length == 2) {
                 cache[id] = cc
                 val edit = prefs(context).edit().putString("cc_" + id.take(64), cc)
@@ -215,12 +220,12 @@ object Flags {
      * "" for both means the tunnel did not answer, never that the exit is empty.
      */
     fun tunnelExit(): Map<String, String> {
-        val raw = runCatching { NativeSec.probe(TRACE, "ip;country", TUNNEL_SOCKS) }.getOrDefault("")
+        val raw = runCatching { NativeSec.probe(TRACE, "ip;loc", TUNNEL_SOCKS) }.getOrDefault("")
         // One host refusing an exit is that host, not the tunnel: the trace page closes TLS to some
         // server addresses, and a card that stops at its no says "unknown exit" while the phone
         // browses fine. The same question, asked of a page on other infrastructure, answers.
         val got = if (raw.isEmpty()) runCatching {
-            NativeSec.probe(ELSEWHERE, "ip;country", TUNNEL_SOCKS)
+            NativeSec.probe(ELSEWHERE, "ip;country_code", TUNNEL_SOCKS)
         }.getOrDefault("") else raw
         if (got.isEmpty()) return mapOf("ip" to "", "cc" to "", "answered" to "0")
         val parts = got.split(';')
@@ -247,7 +252,7 @@ object Flags {
         out["ip"] = p.getString("my_ip", "") ?: ""
         out["cc"] = p.getString("my_cc", "") ?: ""
         if (!ask) return out
-        val parts = runCatching { NativeSec.probe(TRACE, "ip;country", 0).split(';') }
+        val parts = runCatching { NativeSec.probe(TRACE, "ip;loc", 0).split(';') }
             .getOrDefault(emptyList())
         val ip = parts.getOrNull(0).orEmpty().trim()
         val cc = parts.getOrNull(1).orEmpty().trim().uppercase()

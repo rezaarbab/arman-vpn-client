@@ -18,23 +18,25 @@ import ir.v2rayng.compose.core.NativeSec
  * placebo: each test asks the network something the config text cannot fake.
  */
 object Privacy {
-    /** `?location` because the plain trace page has no country field, and the country is the
-     *  half that still means something when the exit address is not the one a name resolves to. */
-    private const val TRACE = "https://www.cloudflare.com/cdn-cgi/trace?location"
-    private const val TRACE_KEYS = "ip;country"
+    /** The trace page answers with `ip=` and `loc=` - `loc` is the two-letter country, and there
+     *  is no `country` field on it. Verified against the page, because asking for a field it does
+     *  not have turns every answer into "nothing" and makes a live list look dead. */
+    private const val TRACE = "https://www.cloudflare.com/cdn-cgi/trace"
+    private const val TRACE_KEYS = "ip;loc"
 
     /**
-     * A page that does not live on the first page's infrastructure, and answers the same one word.
+     * A page that does not live on the first page's infrastructure, and answers the same two words
+     * under its own spellings: the exit address and a two-letter country.
      *
      * One host saying no is that host, not the tunnel: without a second opinion a refusal by the
      * trace page reads exactly like a tunnel carrying nothing - which is what this page did when it
      * answered "Connection closed by peer" while the phone was browsing through the same tunnel.
      */
-    private const val ELSEWHERE = "https://ipinfo.io/json"
-    private const val ELSEWHERE_KEYS = "ip;country"
+    private const val ELSEWHERE = "https://get.geojs.io/v1/ip/geo.json"
+    private const val ELSEWHERE_KEYS = "ip;country_code"
 
     /** The same host on the open port the hardening is supposed to refuse. */
-    private const val PLAINTEXT = "http://ipinfo.io/json"
+    private const val PLAINTEXT = "http://get.geojs.io/v1/ip/geo.json"
 
     /** The socks inbound of the tunnel's own config. */
     private const val TUNNEL_SOCKS = 10890
