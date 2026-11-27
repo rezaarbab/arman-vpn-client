@@ -105,7 +105,7 @@ class PrivacyChecks {
         else if (chainDropped)
           dropWhy == 'carried-nothing'
               ? 'Second hop: the tunnel dropped it - nothing came through, your choice is kept'
-              : 'Second hop: the tunnel dropped it - your choice is kept, ask for it again when you want',
+              : 'Second hop: the tunnel dropped it - your choice is kept, ask for it again when you want'
         else if (notMeasurable)
           'Second hop: the pages refuse this network from both sides - nothing can be measured now'
         else if (tunnelSilent)
