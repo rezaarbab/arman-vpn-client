@@ -3284,6 +3284,8 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
   bool _dropped = false;
   bool _connected = false;
   String _why = '';
+  bool _coreDns = true;
+  bool _blockHttp = true;
   List<String> _result = const [];
   bool _busy = false;
 
@@ -3313,6 +3315,8 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
           _dropped = s.dropped;
           _connected = s.connected;
           _why = s.dropWhy;
+          _coreDns = s.dnsOn;
+          _blockHttp = s.httpOn;
         });
       }
     } catch (_) {
@@ -3476,6 +3480,37 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
             },
           ),
         ),
+        // The halves, apart: the core answering lookups and the open port being refused fail in
+        // different ways, and a phone that loads nothing needs to lose one of them rather than the
+        // whole feature to find out which one it was.
+        if (_on)
+          _Row(
+            icon: Icons.dns_outlined,
+            label: 'Lookups answered by the core',
+            value: 'switch this off if no site loads with the hardening on',
+            child: Switch(
+              value: _coreDns,
+              onChanged: (v) async {
+                setState(() => _coreDns = v);
+                await PrivacyApi.setParts(dns: _coreDns, http: _blockHttp);
+                await _load(over: true);
+              },
+            ),
+          ),
+        if (_on)
+          _Row(
+            icon: Icons.http_outlined,
+            label: 'Refuse plain web traffic',
+            value: 'off for networks that still need it, and for hotel or airport portals',
+            child: Switch(
+              value: _blockHttp,
+              onChanged: (v) async {
+                setState(() => _blockHttp = v);
+                await PrivacyApi.setParts(dns: _coreDns, http: _blockHttp);
+                await _load(over: true);
+              },
+            ),
+          ),
         _Row(
           icon: Icons.splitscreen_outlined,
           label: 'Exit through a second server',

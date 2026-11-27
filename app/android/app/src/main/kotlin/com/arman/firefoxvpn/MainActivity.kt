@@ -178,6 +178,8 @@ class MainActivity : FlutterActivity() {
                             // stops being noise the moment it is not
                             "connected" to CoreService.on,
                             "dropWhy" to Privacy.dropWhy(this),
+                            "dnsOn" to Privacy.dnsOn(this),
+                            "httpOn" to Privacy.httpOn(this),
                             "chainInStore" to (Privacy.chainId(this).isNotEmpty() &&
                                 runCatching {
                                     ir.v2rayng.compose.core.NativeSec.rowOf(Privacy.chainId(this))
@@ -194,6 +196,15 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "blobPrivacyTest" -> inAsk(result) { Privacy.test(this) }
+                // the two halves of the hardening, switched separately on the page
+                "blobPrivacyParts" -> {
+                    Privacy.setParts(
+                        this,
+                        call.argument<Boolean>("dns") == true,
+                        call.argument<Boolean>("http") == true,
+                    )
+                    result.success(null)
+                }
                 // every question the network can answer, in one tap
                 "blobPrivacyDebug" -> inAsk(result) { Privacy.debug(this) }
                 // does this pair carry, asked without touching the running tunnel

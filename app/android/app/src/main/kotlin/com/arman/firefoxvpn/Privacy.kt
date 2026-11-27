@@ -37,14 +37,15 @@ object Privacy {
     private const val ELSEWHERE_KEYS = "ip;country_code"
 
     /**
-     * The open port, asked of a page that answers 200 on it instead of redirecting away.
+     * The open port, asked of the host the encrypted test already knows answers from this phone.
      *
-     * A host that 301s to https is useless here: the client follows the redirect into another TLS
-     * handshake, so the question "did plain web traffic get through" silently becomes "did TLS get
-     * through" - which is the other line, and was the flaw behind one verdict below.
+     * The first target here was unreachable from the handset in both directions, so every run ended
+     * with "not measurable" and the rule was never judged. A page that arrives over 443 and not over
+     * 80, from the same host, is the whole question - and a body with no fields in it still counts as
+     * carried, which is what the redirect and error pages of a blocked port never produce.
      */
-    private const val PLAINTEXT = "http://neverssl.com/"
-    private const val PLAIN_KEYS = "ip"
+    private const val PLAINTEXT = "http://www.cloudflare.com/cdn-cgi/trace"
+    private const val PLAIN_KEYS = "ip;loc"
 
     /** The socks inbound of the tunnel's own config. */
     private const val TUNNEL_SOCKS = 10890
@@ -307,6 +308,28 @@ object Privacy {
     private fun pairPort(): Int = 23000 + (pairSeed.getAndIncrement() % 500)
 
     /**
+     * The two halves of the hardening, each on its own switch. The core answering lookups and the
+     * open port being refused fail in different ways - one can leave the phone with no names at all,
+     * the other breaks the sites that still speak plain http - so they are turned off separately
+     * rather than losing both with one switch.
+     */
+    fun dnsOn(context: Context): Boolean = prefs(context).getString("priv_dns", "1") != "0"
+
+    fun httpOn(context: Context): Boolean = prefs(context).getString("priv_http", "1") != "0"
+
+    /** Text, and committed: the library reads every preference as a string, at dial time. */
+    fun setParts(context: Context, dns: Boolean, http: Boolean) {
+        prefs(context).edit()
+            .putString("priv_dns", if (dns) "1" else "0")
+            .putString("priv_http", if (http) "1" else "0")
+            .commit()
+        CoreService.log(
+            "privacy: lookups " + (if (dns) "answered by the core" else "as before") +
+                ", plain web " + (if (http) "refused" else "allowed"),
+        )
+    }
+
+    /**
      * Whether the tunnel is carrying, as one number: 1 when a page arrived through it, 0 when
      * nothing arrived and the same page answers outside it, -1 when the pages refuse the phone
      * too and there is nothing to conclude.
@@ -344,6 +367,24 @@ object Privacy {
             else -> "other"
         }
         lines.add("stored privacy = $stored, running config = ${if (shape.isEmpty()) "never dialed" else shape}")
+        // The shape is seven facts; spelled out here so a paste says what it means without anyone
+        // having to know the order of the digits.
+        val fields = shape.split('-')
+        if (fields.size >= 5) {
+            if (fields[3].length == 2) {
+                lines.add(
+                    "transports: carrier " + fields[3][0] + ", exit " + fields[3][1] +
+                        " (t=tcp w=ws g=grpc x=xhttp h=httpupgrade)",
+                )
+            }
+            if (fields[4].length == 2) {
+                lines.add(
+                    "hardening halves in this dial: core-side lookups " +
+                        (if (fields[4][0] == '1') "on" else "off") + ", plain web refused " +
+                        (if (fields[4][1] == '1') "on" else "off"),
+                )
+            }
+        }
         if (dropped(context)) {
             lines.add("the tunnel dropped the second hop after it carried nothing - the dial is on one server, the choice is kept")
         }

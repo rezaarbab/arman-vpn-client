@@ -3328,6 +3328,12 @@ static const sblob g_sb[] = {
     { 13, {
         0xc2, 0x3d, 0x83, 0xeb, 0x43, 0x9c, 0x03, 0x9c, 0xe8, 0x45, 0xbd, 0x14, 0x7c
     } },   /* probe_carrier */   /* index 280, round trip "probe_carrier" */
+    { 8, {
+        0x2d, 0x88, 0xfe, 0x42, 0x8e, 0x0a, 0x65, 0xdb
+    } },   /* priv_dns */   /* index 281, round trip "priv_dns" */
+    { 9, {
+        0x0c, 0x6b, 0xdf, 0x25, 0xaf, 0xe5, 0x5e, 0xb3, 0x14
+    } },   /* priv_http */   /* index 282, round trip "priv_http" */
 };
 
 /** the decoded text of one entry; valid until six more have been decoded */
@@ -6253,7 +6259,14 @@ static void sb_direct(sbuf *s) {
 #define PROBE_CHAIN_KEY sb(278)
 #define PROBE_EXIT_KEY sb(279)
 #define PROBE_CARRIER_KEY sb(280)
+/* the two halves of the hardening, each with its own switch: the core's own resolver and the
+   refusal of the open port fail differently, and a person whose sites stop loading has to be
+   able to tell which half did it without giving up the other */
+#define PRIV_DNS_KEY sb(281)
+#define PRIV_HTTP_KEY sb(282)
 static int g_priv = 0;
+/* the two halves of the hardening, read with the switch above; both default to on */
+static int g_dns = 1, g_http = 1;
 static const char *g_tag = "proxy";
 static const char *g_dialer = NULL;
 
@@ -6385,9 +6398,17 @@ static void sb_routing(sbuf *s, int mode) {
        else goes to the exit. With a chain, the first server sees one destination -
        the exit - and none of the names. */
     sb_add(s, "{\"domainStrategy\":\"AsIs\",\"rules\":[");
-    sb_add(s, "{\"type\":\"field\",\"port\":\"53\",\"network\":\"tcp,udp\",\"outboundTag\":\"dns-out\"},");
-    sb_add(s, "{\"type\":\"field\",\"protocol\":[\"http\"],\"outboundTag\":\"block\"},");
-    sb_add(s, "{\"type\":\"field\",\"network\":\"tcp\",\"port\":\"80\",\"outboundTag\":\"block\"},");
+    /* the core answers the lookups itself (over DoH, inside TLS) instead of letting them ride out
+       as cleartext - and only when that half is on, because a resolver that cannot reach its server
+       from inside the tunnel is a phone with no names and no sites */
+    if (g_dns)
+        sb_add(s, "{\"type\":\"field\",\"port\":\"53\",\"network\":\"tcp,udp\",\"outboundTag\":\"dns-out\"},");
+    /* sniffed HTTP and port 80 are refused, so a server that carries the traffic cannot read a page
+       in the open - the other half, and it breaks captive portals, so it is switchable too */
+    if (g_http) {
+        sb_add(s, "{\"type\":\"field\",\"protocol\":[\"http\"],\"outboundTag\":\"block\"},");
+        sb_add(s, "{\"type\":\"field\",\"network\":\"tcp\",\"port\":\"80\",\"outboundTag\":\"block\"},");
+    }
     sb_add(s, "{\"type\":\"field\",\"outboundTag\":\"proxy\",\"network\":\"tcp,udp\"}]}");
 }
 
@@ -6407,8 +6428,12 @@ static void sb_priv_out(sbuf *s) {
 /** names are read off the first packets so the http rule can actually match: the
  *  rule alone, without sniffing, is a rule that fires on nothing */
 static void sb_sniff(sbuf *s) {
-    if (!g_priv) return;
-    sb_add(s, ",\"sniffing\":{\"enabled\":true,\"destOverride\":[\"http\",\"tls\",\"quic\"]}");
+    /* The sniffed protocol name is what the http rule matches on. With that half off there is
+       nothing to sniff for, and rewriting a connection's destination from its own SNI is a change to
+       the path that no rule of ours needs - so it goes with the switch it serves, not with the
+       hardening as a whole. */
+    if (!g_priv || !g_http) return;
+    sb_add(s, ",\"sniffing\":{\"enabled\":true,\"destOverride\":[\"http\"]}");
 }
 
 static void sb_socks(sbuf *s, int port) {
@@ -6553,7 +6578,7 @@ static int config_build(sbuf *s, int mode, int socksPort, const char *hop1) {
     if (g_priv && mode == 0) sb_priv_out(s);
     sb_add(s, "],\"routing\":");
     sb_routing(s, mode);
-    if (g_priv && mode == 0) sb_dns(s);
+    if (g_priv && g_dns && mode == 0) sb_dns(s);
     if (mode == 0) {
         sb_add(s, ",\"stats\":{},\"policy\":{\"levels\":{\"0\":{\"statsUserUplink\":true,\"statsUserDownlink\":true}},\"system\":{\"statsOutboundUplink\":true,\"statsOutboundDownlink\":true}}");
     }
@@ -6592,6 +6617,14 @@ static jstring cfg_text(JNIEnv *env, jclass cls, jint row, jint mode, jint socks
     char *pv = pref_get_in(env, CORE_PREF, PRIV_KEY);
     g_priv = (pv != NULL && pv[0] == '1') ? 1 : 0;
     free(pv);
+    char *dv = pref_get_in(env, CORE_PREF, PRIV_DNS_KEY);
+    char *hv = pref_get_in(env, CORE_PREF, PRIV_HTTP_KEY);
+    /* absent means on: both halves shipped before the switches existed, and reading a value the
+       handset never wrote as "off" would drop protection it already had */
+    g_dns = (dv == NULL || dv[0] != '0') ? 1 : 0;
+    g_http = (hv == NULL || hv[0] != '0') ? 1 : 0;
+    free(dv);
+    free(hv);
     char chainId[PLR_ID];
     chainId[0] = 0;
     /* The tunnel chains what the person chose. A probe core chains what a pair test asks for, and
@@ -6659,24 +6692,25 @@ static jstring cfg_text(JNIEnv *env, jclass cls, jint row, jint mode, jint socks
     s.b = NULL; s.n = 0; s.cap = 0;
     if (!config_build(&s, mode, socksPort, hop1)) {
         free(s.b); free(hop1);
-        g_dialer = NULL; g_priv = 0;
+        g_dialer = NULL; g_priv = 0; g_dns = 1; g_http = 1;
         pthread_mutex_unlock(&g_cfg_mtx); set_step("cfgforrow:build"); return NULL;
     }
     jstring out = (*env)->NewStringUTF(env, s.b);
     free(s.b);
     free(hop1);
-    /* what the tunnel that is about to start was really built with: three digits, no address,
-       no id, no name - and the only way a page can say "the switch is on but the config does
-       not carry it" instead of guessing at it. The third digit is the person's choice, which
-       outlives the dial when the tunnel dropped that hop: chosen-used-picked are three facts. */
+    /* what the tunnel that is about to start was really built with: no address, no id, no name -
+       hardening, whether the chain is in the dial, whether a hop was chosen, the two transports and
+       the two halves of the hardening. Seven facts a page can read back instead of guess. */
     if (mode == 0) {
         char shape[24];
-        snprintf(shape, sizeof(shape), "%d-%d-%d-%c%c", g_priv, g_dialer != NULL ? 1 : 0, chosen ? 1 : 0,
-                 type_letter(carrierType), type_letter(exitType));
+        snprintf(shape, sizeof(shape), "%d-%d-%d-%c%c-%d%d", g_priv, g_dialer != NULL ? 1 : 0, chosen ? 1 : 0,
+                 type_letter(carrierType), type_letter(exitType), g_dns, g_http);
         pref_put_in(env, CORE_PREF, SHAPE_KEY, shape, 0);
     }
     g_dialer = NULL;
     g_priv = 0;
+    g_dns = 1;
+    g_http = 1;
     pthread_mutex_unlock(&g_cfg_mtx);
     if (out) set_step("cfgforrow:ok");
     return out;

@@ -13,6 +13,8 @@ class PrivacyState {
     required this.dropped,
     required this.connected,
     required this.dropWhy,
+    required this.dnsOn,
+    required this.httpOn,
   });
 
   final bool on;
@@ -33,6 +35,11 @@ class PrivacyState {
   /// `same-host` when the two servers are one machine, `carried-nothing` when the hop simply did
   /// not carry, "" when nothing was recorded.
   final String dropWhy;
+
+  /// The two halves of the hardening, switched apart: the core answering lookups, and the open port
+  /// being refused. One of them can be the reason a phone suddenly loads nothing.
+  final bool dnsOn;
+  final bool httpOn;
 }
 
 class PrivacyChecks {
@@ -153,11 +160,17 @@ class PrivacyApi {
       dropped: v['dropped'] == true,
       connected: v['connected'] == true,
       dropWhy: '${v['dropWhy'] ?? ''}',
+      dnsOn: v['dnsOn'] != false,
+      httpOn: v['httpOn'] != false,
     );
   }
 
   static Future<void> set({required bool on, required String chainId}) =>
       _ch.invokeMethod<void>('blobPrivacySet', {'on': on, 'chainId': chainId});
+
+  /// The two halves of the hardening, switched separately; they take effect on the next connect.
+  static Future<void> setParts({required bool dns, required bool http}) =>
+      _ch.invokeMethod<void>('blobPrivacyParts', {'dns': dns, 'http': http});
 
   /// Runs the checks on the phone's own threads; the answers come from the network.
   static Future<PrivacyChecks> test() async {
