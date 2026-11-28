@@ -419,7 +419,7 @@ object Privacy {
             return
         }
         surveyOn = true
-        svDone.set(0); svTotal.set(0); svGood.set(0); svSame.set(0)
+        svDone.set(0); svTotal.set(0); svGood.set(0); svSame.set(0); svUnknown.set(0)
         Thread {
             val mine = hostGroup(ctx, carrier)
             val count = IrRows.count()
@@ -455,9 +455,17 @@ object Privacy {
                 workers.add(pool.submit {
                     for (id in list) {
                         if (!surveyOn) break
-                        val word = probePair(ctx, id)
+                        var word = probePair(ctx, id)
+                        // "no-core" is the test failing, not the server: it says a third core would
+                        // not start right now. One retry, because leaving it would count a working
+                        // row as unmeasured - and it is the only verdict none of the others means.
+                        if (word == "no-core" && surveyOn) {
+                            runCatching { Thread.sleep(400) }
+                            word = probePair(ctx, id)
+                        }
                         svDone.incrementAndGet()
                         if (word == "carries") svGood.incrementAndGet()
+                        if (word == "no-core") svUnknown.incrementAndGet()
                         CoreService.log("survey: " + svDone.get() + " of " + svTotal.get() + " - $word")
                     }
                 })
@@ -467,10 +475,13 @@ object Privacy {
                 runCatching { pool.awaitTermination(1, java.util.concurrent.TimeUnit.SECONDS) }
             }
             runCatching { workers.forEach { it.get() } }
+            val stopped = !surveyOn
             surveyOn = false
             CoreService.log(
-                "survey: over - " + svGood.get() + " of " + svTotal.get() +
-                    " can carry a second hop, " + svSame.get() + " are the same machine as your server",
+                (if (stopped) "survey: you stopped it - " else "survey: over - ") +
+                    svGood.get() + " of " + svDone.get() + " tested carry a second hop" +
+                    ", " + svSame.get() + " are the same machine as your server" +
+                    if (svUnknown.get() > 0) ", " + svUnknown.get() + " could not be measured" else "",
             )
         }.start()
     }
@@ -486,6 +497,7 @@ object Privacy {
     private val svTotal = java.util.concurrent.atomic.AtomicInteger(0)
     private val svGood = java.util.concurrent.atomic.AtomicInteger(0)
     private val svSame = java.util.concurrent.atomic.AtomicInteger(0)
+    private val svUnknown = java.util.concurrent.atomic.AtomicInteger(0)
 
     fun surveyState(): Map<String, Any?> = mapOf(
         "running" to surveyOn,
@@ -493,6 +505,7 @@ object Privacy {
         "total" to svTotal.get(),
         "good" to svGood.get(),
         "same" to svSame.get(),
+        "unknown" to svUnknown.get(),
     )
 
     /** The mark already stored for a row, without asking the resolver anything: the channel reads

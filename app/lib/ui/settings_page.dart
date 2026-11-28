@@ -3292,6 +3292,7 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
   Map<String, String> _pairs = const {};
   Map<String, String> _groups = const {};
   bool _surveying = false;
+  bool _onlyCarry = false;
   Timer? _tick;
 
   /// Counted from the phone while the survey runs, so the screen says where it stands and what it
@@ -3420,45 +3421,77 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
     if (!mounted) return;
     await _loadMarks();
     if (!mounted) return;
+    // The rows that were measured to carry come first, and the switch narrows the list to them:
+    // after a survey the person is choosing among the ones that work, not scrolling past the ones
+    // that were already proven not to.
+    final sorted = [...rows]..sort((a, b) {
+      final ok = (_pairs[a['id']] ?? '') == 'carries' ? 0 : 1;
+      final ok2 = (_pairs[b['id']] ?? '') == 'carries' ? 0 : 1;
+      return ok.compareTo(ok2);
+    });
     final picked = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Exit through a second server'),
-        content: SizedBox(
-          width: 460,
-          height: 420,
-          child: rows.isEmpty
-              ? const Text('The list is empty - update it first.')
-              : ListView(
-                  children: [
-                    ListTile(
-                      dense: true,
-                      leading: const Icon(Icons.close_rounded),
-                      title: const Text('No second server'),
-                      onTap: () => Navigator.pop(context, ''),
+      builder: (context) => StatefulBuilder(
+        builder: (context, rebuild) {
+          final shown = _onlyCarry
+              ? sorted.where((r) => (_pairs[r['id']] ?? '') == 'carries').toList()
+              : sorted;
+          return AlertDialog(
+            title: const Text('Exit through a second server'),
+            content: SizedBox(
+              width: 460,
+              height: 420,
+              child: rows.isEmpty
+                  ? const Text('The list is empty - update it first.')
+                  : Column(
+                      children: [
+                        SwitchListTile.adaptive(
+                          dense: true,
+                          title: const Text('Only the ones measured as carrying'),
+                          value: _onlyCarry,
+                          onChanged: (v) => rebuild(() => _onlyCarry = v),
+                        ),
+                        const Divider(height: 1),
+                        Expanded(
+                          child: shown.isEmpty
+                              ? const Text('Nothing measured as carrying yet - run the survey first.')
+                              : ListView(
+                                  children: [
+                                    ListTile(
+                                      dense: true,
+                                      leading: const Icon(Icons.close_rounded),
+                                      title: const Text('No second server'),
+                                      onTap: () => Navigator.pop(context, ''),
+                                    ),
+                                    const Divider(height: 1),
+                                    for (final r in shown)
+                                      ListTile(
+                                        dense: true,
+                                        leading: Icon(
+                                          r['id'] == _chainId
+                                              ? Icons.radio_button_checked_rounded
+                                              : Icons.radio_button_unchecked_rounded,
+                                        ),
+                                        title: Text(
+                                          (r['name'] ?? '').isEmpty ? r['id'] ?? '' : r['name']!,
+                                        ),
+                                        subtitle: Text(
+                                          [
+                                            if (!(r['cat'] ?? '').isEmpty) r['cat']!,
+                                            _markOf(r['id'] ?? ''),
+                                          ].where((e) => e.isNotEmpty).join(' - '),
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                        onTap: () => Navigator.pop(context, r['id'] ?? ''),
+                                      ),
+                                  ],
+                                ),
+                        ),
+                      ],
                     ),
-                    const Divider(height: 1),
-                    for (final r in rows)
-                      ListTile(
-                        dense: true,
-                        leading: Icon(
-                          r['id'] == _chainId
-                              ? Icons.radio_button_checked_rounded
-                              : Icons.radio_button_unchecked_rounded,
-                        ),
-                        title: Text((r['name'] ?? '').isEmpty ? r['id'] ?? '' : r['name']!),
-                        subtitle: Text(
-                          [
-                            if (!(r['cat'] ?? '').isEmpty) r['cat']!,
-                            _markOf(r['id'] ?? ''),
-                          ].where((e) => e.isNotEmpty).join(' - '),
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        onTap: () => Navigator.pop(context, r['id'] ?? ''),
-                      ),
-                  ],
-                ),
-        ),
+            ),
+          );
+        },
       ),
     );
     if (picked == null) return;
