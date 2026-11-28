@@ -17,6 +17,8 @@ class PrivacyState {
     required this.httpOn,
     required this.fails,
     required this.carrierGroup,
+    required this.serverId,
+    required this.pairCarrier,
   });
 
   final bool on;
@@ -49,6 +51,11 @@ class PrivacyState {
   /// The machine mark of the server in use. Rows sharing it are the same box, so they cannot be a
   /// second hop - the list says so instead of letting a test find out by timing out.
   final String carrierGroup;
+
+  /// The server in use, and the one the stored pair verdicts were measured through. When they differ
+  /// the marks describe another carrier's pairs, and the picker says so instead of pretending.
+  final String serverId;
+  final String pairCarrier;
 }
 
 class PrivacyChecks {
@@ -173,6 +180,8 @@ class PrivacyApi {
       httpOn: v['httpOn'] != false,
       fails: (v['fails'] as int?) ?? 0,
       carrierGroup: '${v['carrierGroup'] ?? ''}',
+      serverId: '${v['serverId'] ?? ''}',
+      pairCarrier: '${v['pairCarrier'] ?? ''}',
     );
   }
 

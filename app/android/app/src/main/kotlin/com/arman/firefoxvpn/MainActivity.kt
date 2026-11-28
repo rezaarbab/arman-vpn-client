@@ -183,6 +183,8 @@ class MainActivity : FlutterActivity() {
                             "fails" to Privacy.hopFails(this),
                             // the picker marks rows that resolve to this same machine
                             "carrierGroup" to Privacy.cachedGroup(this, CoreService.pickedId(this)),
+                            "serverId" to CoreService.pickedId(this),
+                            "pairCarrier" to Privacy.pairCarrier(this),
                             "chainInStore" to (Privacy.chainId(this).isNotEmpty() &&
                                 runCatching {
                                     ir.v2rayng.compose.core.NativeSec.rowOf(Privacy.chainId(this))

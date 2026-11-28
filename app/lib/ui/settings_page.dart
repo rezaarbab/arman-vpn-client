@@ -3293,6 +3293,8 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
   Map<String, String> _groups = const {};
   bool _surveying = false;
   bool _onlyCarry = false;
+  String _serverId = '';
+  String _pairCarrier = '';
   Timer? _tick;
 
   /// Counted from the phone while the survey runs, so the screen says where it stands and what it
@@ -3391,6 +3393,8 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
           _blockHttp = s.httpOn;
           _fails = s.fails;
           _carrierGroup = s.carrierGroup;
+          _serverId = s.serverId;
+          _pairCarrier = s.pairCarrier;
         });
       }
     } catch (_) {
@@ -3452,6 +3456,14 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
                           onChanged: (v) => rebuild(() => _onlyCarry = v),
                         ),
                         const Divider(height: 1),
+                        if (_pairCarrier.isNotEmpty && _serverId.isNotEmpty && _pairCarrier != _serverId)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
+                            child: Text(
+                              'measured through a different server - run the survey again for this one',
+                              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.error),
+                            ),
+                          ),
                         Expanded(
                           child: shown.isEmpty
                               ? const Text('Nothing measured as carrying yet - run the survey first.')

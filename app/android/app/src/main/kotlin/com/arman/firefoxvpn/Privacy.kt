@@ -320,7 +320,12 @@ object Privacy {
         return try {
             val seen = ask(TRACE, TRACE_KEYS, port)
             val word = verdictWord(seen)
-            p.edit().putString("pc_" + exitId.take(64), word).commit()
+            p.edit()
+                .putString("pc_" + exitId.take(64), word)
+                // which server the verdict was measured through: a pair answer is about the pair,
+                // and a mark inherited from another carrier would be a lie about this one
+                .putString("pc_of", carrier)
+                .commit()
             word
         } finally {
             runCatching { NativeSec.probeStop(handle) }
@@ -373,10 +378,14 @@ object Privacy {
     fun pairVerdicts(context: Context): Map<String, String> {
         val out = LinkedHashMap<String, String>()
         for ((k, v) in prefs(context).all) {
-            if (k.startsWith("pc_") && v is String) out[k.removePrefix("pc_")] = v
+            if (k.startsWith("pc_") && k != "pc_of" && v is String) out[k.removePrefix("pc_")] = v
         }
         return out
     }
+
+    /** The server the stored verdicts were measured through, so the picker can say when they were
+     *  measured through another one. */
+    fun pairCarrier(context: Context): String = prefs(context).getString("pc_of", "") ?: ""
 
     /** The machine marks this phone knows, by row id: rows sharing a number are one box. */
     fun hostGroups(context: Context): Map<String, String> {
