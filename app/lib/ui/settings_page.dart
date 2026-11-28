@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
@@ -3291,6 +3292,14 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
   Map<String, String> _pairs = const {};
   Map<String, String> _groups = const {};
   bool _surveying = false;
+  Timer? _tick;
+
+  /// Counted from the phone while the survey runs, so the screen says where it stands and what it
+  /// has already found. A run of several minutes you cannot read is a run you must sit through.
+  int _svDone = 0;
+  int _svTotal = 0;
+  int _svGood = 0;
+  int _svSame = 0;
   List<String> _result = const [];
   bool _busy = false;
 
@@ -3305,6 +3314,52 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
     super.initState();
     _load();
     _loadMarks();
+    _peek();
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  /// Where the survey stands, read once on entry. If it turns out to be running - the page was
+  /// left and came back, the phone slept - the counting resumes by itself.
+  Future<void> _peek() async {
+    try {
+      final p = await PrivacyApi.progress();
+      if (!mounted) return;
+      _applyProgress(p);
+      if (_surveying) _startWatch();
+    } catch (_) {}
+  }
+
+  void _applyProgress(Map<String, Object?> p) {
+    setState(() {
+      _svDone = (p['done'] as int?) ?? _svDone;
+      _svTotal = (p['total'] as int?) ?? _svTotal;
+      _svGood = (p['good'] as int?) ?? _svGood;
+      _svSame = (p['same'] as int?) ?? _svSame;
+      _surveying = p['running'] == true;
+    });
+  }
+
+  void _startWatch() {
+    _tick?.cancel();
+    _tick = Timer.periodic(const Duration(seconds: 2), (timer) async {
+      try {
+        final p = await PrivacyApi.progress();
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        _applyProgress(p);
+        if (!_surveying) {
+          timer.cancel();
+          _loadMarks();
+        }
+      } catch (_) {}
+    });
   }
 
   /// What each row was measured as a second hop, and which rows are the same machine. Read once
@@ -3558,19 +3613,32 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
           icon: Icons.rule_rounded,
           label: 'Test every server as a second hop',
           value: _surveying
-              ? 'running, one row at a time - the log says what each came back as. Tap to stop.'
-              : 'one row at a time, with the reason each failed written in the log. Tap again to stop.',
+              ? '$_svDone of $_svTotal tested, $_svGood carry'
+                  '${_svSame > 0 ? ", $_svSame are the same machine" : ""} - tap to stop'
+              : _svTotal > 0
+                  ? 'stopped after $_svDone: $_svGood carry, $_svSame are the same machine. '
+                      'What was measured is kept - tap to continue.'
+                  : 'one row at a time, the reason each failed in the log. Tap again to stop.',
           onTap: () async {
             final running = await PrivacyApi.survey();
             if (!mounted) return;
             setState(() => _surveying = running);
-            if (!running) await _loadMarks();
+            if (running) {
+              _startWatch();
+            } else {
+              _tick?.cancel();
+              _peek();
+              _loadMarks();
+            }
           },
           child: _surveying
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+              ? SizedBox(
+                  width: 34,
+                  child: Text(
+                    '$_svDone/$_svTotal',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall,
+                  ),
                 )
               : const Icon(Icons.play_arrow_rounded),
         ),

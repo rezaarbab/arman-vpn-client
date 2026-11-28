@@ -219,4 +219,10 @@ class PrivacyApi {
   /// Start the survey of every row as a second hop, or stop it if one is already running.
   static Future<bool> survey() async =>
       await _ch.invokeMethod<bool>('blobPrivacySurvey') ?? false;
+
+  /// Where the survey is: running, done, total, good, same. Read while it runs so the screen counts.
+  static Future<Map<String, Object?>> progress() async {
+    final m = await _ch.invokeMethod<Map<Object?, Object?>>('blobPrivacyProgress');
+    return m?.map((k, v) => MapEntry('$k', v)) ?? const {};
+  }
 }

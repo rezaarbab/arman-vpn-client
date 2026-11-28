@@ -218,6 +218,7 @@ class MainActivity : FlutterActivity() {
                     Privacy.survey(this)
                     result.success(Privacy.surveyRunning())
                 }
+                "blobPrivacyProgress" -> result.success(Privacy.surveyState())
                 "irAdmin" -> result.success(
                     mapOf(
                         "popup" to Admin.popup(this),

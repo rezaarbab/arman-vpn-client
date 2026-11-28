@@ -297,21 +297,26 @@ object Privacy {
         if (carrierRow < 0 || runCatching { NativeSec.rowOf(exitId) }.getOrDefault(-1) < 0) return "no-row"
         val p = prefs(context)
         val port = pairPort()
-        p.edit()
-            .putString("probe_carrier", carrier)
-            .putString("probe_exit", exitId)
-            .putString("probe_chain", "1")
-            .commit()
         val quiet = object : CoreCallbackHandler {
             override fun startup(): Long = 0L
             override fun shutdown(): Long = 0L
             override fun onEmitStatus(p0: Long, p1: String?): Long = 0L
         }
-        val handle = runCatching { NativeSec.probeStart(carrierRow, port, quiet) }.getOrDefault(0)
-        if (handle == 0) {
-            p.edit().remove("probe_chain").remove("probe_exit").remove("probe_carrier").commit()
-            return "no-core"
+        val handle: Int
+        // The three armed switches are one shared pair of prefs, and the library reads them while it
+        // builds this core's config. Writing them and starting the core therefore happen under one
+        // lock: without it, a second test could arm its own exit between the first one's write and
+        // its build, and a row would be measured through another row's pair.
+        synchronized(pairLock) {
+            p.edit()
+                .putString("probe_carrier", carrier)
+                .putString("probe_exit", exitId)
+                .putString("probe_chain", "1")
+                .commit()
+            handle = runCatching { NativeSec.probeStart(carrierRow, port, quiet) }.getOrDefault(0)
+            p.edit().putString("probe_chain", "0").commit()
         }
+        if (handle == 0) return "no-core"
         return try {
             val seen = ask(TRACE, TRACE_KEYS, port)
             val word = verdictWord(seen)
@@ -319,7 +324,6 @@ object Privacy {
             word
         } finally {
             runCatching { NativeSec.probeStop(handle) }
-            p.edit().remove("probe_chain").remove("probe_exit").remove("probe_carrier").commit()
         }
     }
 
@@ -402,7 +406,10 @@ object Privacy {
     fun survey(context: Context) {
         if (surveyOn) {
             surveyOn = false
-            CoreService.log("survey: you asked it to stop - the verdicts measured so far are kept")
+            CoreService.log(
+                "survey: you asked it to stop - " + svDone.get() + " tested, " + svGood.get() +
+                    " carry, and every one of them is kept",
+            )
             return
         }
         val ctx = context.applicationContext
@@ -412,37 +419,81 @@ object Privacy {
             return
         }
         surveyOn = true
+        svDone.set(0); svTotal.set(0); svGood.set(0); svSame.set(0)
         Thread {
             val mine = hostGroup(ctx, carrier)
             val count = IrRows.count()
-            var tested = 0
-            var good = 0
-            var same = 0
-            CoreService.log("survey: testing $count rows as a second hop through your server")
+            val todo = ArrayList<String>()
             for (i in 0 until count) {
                 if (!surveyOn) break
                 val id = runCatching { IrRows.id(i) }.getOrDefault("")
                 if (id.isEmpty() || id == carrier) continue
-                tested++
                 val group = hostGroup(ctx, id)
                 if (mine.isNotEmpty() && group == mine) {
-                    same++
-                    CoreService.log("survey: row $tested - the same machine as your server, not a second hop")
+                    svSame.incrementAndGet()
+                    CoreService.log("survey: row $i - the same machine as your server, not a second hop")
                     continue
                 }
-                val word = probePair(ctx, id)
-                if (word == "carries") good++
-                CoreService.log("survey: row $tested of $count - $word")
+                // a row that already proved itself is not dialed again; failures are, because they
+                // are the flaky ones and a second answer is the information
+                if (pairKnown(ctx, id) == "carries") continue
+                todo.add(id)
             }
+            svTotal.set(todo.size)
+            CoreService.log(
+                "survey: $count rows, " + svSame.get() + " are the same machine as your server, " +
+                    todo.size + " to test through it",
+            )
+            // Three at a time: one pair test costs up to eleven seconds of waiting for a page, and
+            // the phone already runs three flag cores side by side, so this is the proven ceiling.
+            val pool = java.util.concurrent.Executors.newFixedThreadPool(3)
+            val workers = ArrayList<java.util.concurrent.Future<*>>()
+            for (w in 0 until 3) {
+                val list = ArrayList<String>()
+                var k = w
+                while (k < todo.size) { list.add(todo[k]); k += 3 }
+                workers.add(pool.submit {
+                    for (id in list) {
+                        if (!surveyOn) break
+                        val word = probePair(ctx, id)
+                        svDone.incrementAndGet()
+                        if (word == "carries") svGood.incrementAndGet()
+                        CoreService.log("survey: " + svDone.get() + " of " + svTotal.get() + " - $word")
+                    }
+                })
+            }
+            pool.shutdown()
+            while (!pool.isTerminated) {
+                runCatching { pool.awaitTermination(1, java.util.concurrent.TimeUnit.SECONDS) }
+            }
+            runCatching { workers.forEach { it.get() } }
             surveyOn = false
             CoreService.log(
-                "survey: over - $good of $tested can carry a second hop" +
-                    if (same > 0) ", $same are the same machine as your server" else "",
+                "survey: over - " + svGood.get() + " of " + svTotal.get() +
+                    " can carry a second hop, " + svSame.get() + " are the same machine as your server",
             )
         }.start()
     }
 
     private val pairSeed = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** Held while a pair's switches are armed and its core is started, so parallel tests cannot
+     *  build each other's config. */
+    private val pairLock = Any()
+
+    /** Where the survey is, read by the page every couple of seconds while it runs. */
+    private val svDone = java.util.concurrent.atomic.AtomicInteger(0)
+    private val svTotal = java.util.concurrent.atomic.AtomicInteger(0)
+    private val svGood = java.util.concurrent.atomic.AtomicInteger(0)
+    private val svSame = java.util.concurrent.atomic.AtomicInteger(0)
+
+    fun surveyState(): Map<String, Any?> = mapOf(
+        "running" to surveyOn,
+        "done" to svDone.get(),
+        "total" to svTotal.get(),
+        "good" to svGood.get(),
+        "same" to svSame.get(),
+    )
 
     /** The mark already stored for a row, without asking the resolver anything: the channel reads
      *  this on its own thread, and a name lookup does not belong there. */
