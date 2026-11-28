@@ -273,10 +273,28 @@ object Privacy {
      * kept per candidate, so the picker can mark the rows that carry rather than being tried blind.
      */
     fun pairTest(context: Context, exitId: String): Int {
+        val word = probePair(context, exitId)
+        CoreService.log("pair: $word")
+        return when (word) {
+            "carries" -> 1
+            "no-core", "no-row" -> -2
+            else -> 0
+        }
+    }
+
+    /**
+     * What a chained page through this pair came back as, as a word and never an address or a name.
+     *
+     * `carries` is the only good one. The rest name different faults, and telling them apart is the
+     * whole point: a server that refuses the connection, one whose handshake is torn down, and one
+     * that never answers at all are three different problems - and until here all three printed as
+     * "it did not work", which is what made this feel random.
+     */
+    private fun probePair(context: Context, exitId: String): String {
         val carrier = CoreService.pickedId(context)
-        if (carrier.isBlank() || exitId.isBlank() || carrier == exitId) return -2
+        if (carrier.isBlank() || exitId.isBlank() || carrier == exitId) return "no-row"
         val carrierRow = runCatching { NativeSec.rowOf(carrier) }.getOrDefault(-1)
-        if (carrierRow < 0 || runCatching { NativeSec.rowOf(exitId) }.getOrDefault(-1) < 0) return -2
+        if (carrierRow < 0 || runCatching { NativeSec.rowOf(exitId) }.getOrDefault(-1) < 0) return "no-row"
         val p = prefs(context)
         val port = pairPort()
         p.edit()
@@ -292,22 +310,55 @@ object Privacy {
         val handle = runCatching { NativeSec.probeStart(carrierRow, port, quiet) }.getOrDefault(0)
         if (handle == 0) {
             p.edit().remove("probe_chain").remove("probe_exit").remove("probe_carrier").commit()
-            CoreService.log("pair: the test core would not start - nothing measured")
-            return -2
+            return "no-core"
         }
         return try {
             val seen = ask(TRACE, TRACE_KEYS, port)
-            val verdict = if (seen.answered) 1 else 0
-            p.edit().putString("pc_" + exitId.take(64), verdict.toString()).commit()
-            CoreService.log(
-                if (verdict == 1) "pair: the traffic got through this second server"
-                else "pair: this second server carried nothing (at [${seen.step}])",
-            )
-            verdict
+            val word = verdictWord(seen)
+            p.edit().putString("pc_" + exitId.take(64), word).commit()
+            word
         } finally {
             runCatching { NativeSec.probeStop(handle) }
             p.edit().remove("probe_chain").remove("probe_exit").remove("probe_carrier").commit()
         }
+    }
+
+    /** The library keeps the first exception of a call with its class and its message, and those
+     *  words are what separates one failure from another without saying anything about a server. */
+    private fun verdictWord(seen: Probe): String = when {
+        seen.answered -> "carries"
+        seen.step.contains("ConnectException") || seen.step.contains("connection refused") -> "refused"
+        seen.step.contains("SSLHandshake") || seen.step.contains("reset by peer") ||
+            seen.step.contains("closed by peer") || seen.step.contains("handshake") -> "handshake-reset"
+        seen.step.contains("SocketTimeout") || seen.step.contains("ReadTimeout") -> "no-answer"
+        seen.step.contains("NoRouteToHost") || seen.step.contains("NetworkUnreachable") ||
+            seen.step.contains("ENETUNREACH") || seen.step.contains("UnknownHost") ||
+            seen.step.contains("SocketException") -> "unreachable"
+        seen.carried -> "page-refused"
+        else -> "no-answer"
+    }
+
+    /** How a row was last measured as a second hop: "carries", "handshake-reset", "" if untested. */
+    fun pairVerdict(context: Context, id: String): String = pairKnown(context, id)
+
+    /**
+     * A number standing for the machine a row is reached at: rows sharing one are the same box on
+     * different ports, which makes a "second hop" a loop through one provider rather than a hop.
+     *
+     * The address is never stored or printed - this is a fold of it into four digits, kept so the
+     * list can mark the rows that are really one choice.
+     */
+    fun hostGroup(context: Context, id: String): String {
+        if (id.isBlank()) return ""
+        val saved = prefs(context).getString("mg_" + id.take(64), "") ?: ""
+        if (saved.isNotEmpty()) return saved
+        val ip = hopIpOf(context, id)
+        if (ip.isEmpty()) return ""
+        var h = 7
+        for (c in ip) h = (h * 31 + c.code) and 0x7fffffff
+        val group = (h % 9000 + 1000).toString()
+        prefs(context).edit().putString("mg_" + id.take(64), group).commit()
+        return group
     }
 
     /** The pair verdicts this phone already has, by row id: "1" carries, "0" does not. */
@@ -323,7 +374,80 @@ object Privacy {
         return out
     }
 
+    /** The machine marks this phone knows, by row id: rows sharing a number are one box. */
+    fun hostGroups(context: Context): Map<String, String> {
+        val out = LinkedHashMap<String, String>()
+        for ((k, v) in prefs(context).all) {
+            if (k.startsWith("mg_") && v is String) out[k.removePrefix("mg_")] = v
+        }
+        return out
+    }
+
+    /**
+     * Test **every** row as a second hop through the server in use - in the background, one at a
+     * time, one line of the log per answer.
+     *
+     * Trying pairs by hand costs a connect, eight seconds of a dead tunnel and a trip back to the
+     * list, which is why this exists. Rows that resolve to the same machine as the carrier are named
+     * without being dialed at all - they cannot be a second hop - and every other row gets exactly
+     * the question a single test asks, with the reason it failed written down.
+     *
+     * Asking again stops it. What was measured until then is kept.
+     */
+    @Volatile
+    private var surveyOn = false
+
+    fun surveyRunning(): Boolean = surveyOn
+
+    fun survey(context: Context) {
+        if (surveyOn) {
+            surveyOn = false
+            CoreService.log("survey: you asked it to stop - the verdicts measured so far are kept")
+            return
+        }
+        val ctx = context.applicationContext
+        val carrier = CoreService.pickedId(ctx)
+        if (carrier.isBlank()) {
+            CoreService.log("survey: pick a server first - the others are tested through it")
+            return
+        }
+        surveyOn = true
+        Thread {
+            val mine = hostGroup(ctx, carrier)
+            val count = IrRows.count()
+            var tested = 0
+            var good = 0
+            var same = 0
+            CoreService.log("survey: testing $count rows as a second hop through your server")
+            for (i in 0 until count) {
+                if (!surveyOn) break
+                val id = runCatching { IrRows.id(i) }.getOrDefault("")
+                if (id.isEmpty() || id == carrier) continue
+                tested++
+                val group = hostGroup(ctx, id)
+                if (mine.isNotEmpty() && group == mine) {
+                    same++
+                    CoreService.log("survey: row $tested - the same machine as your server, not a second hop")
+                    continue
+                }
+                val word = probePair(ctx, id)
+                if (word == "carries") good++
+                CoreService.log("survey: row $tested of $count - $word")
+            }
+            surveyOn = false
+            CoreService.log(
+                "survey: over - $good of $tested can carry a second hop" +
+                    if (same > 0) ", $same are the same machine as your server" else "",
+            )
+        }.start()
+    }
+
     private val pairSeed = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /** The mark already stored for a row, without asking the resolver anything: the channel reads
+     *  this on its own thread, and a name lookup does not belong there. */
+    fun cachedGroup(context: Context, id: String): String =
+        if (id.isBlank()) "" else prefs(context).getString("mg_" + id.take(64), "") ?: ""
 
     /** Away from the ports the flag probes use, so the two never fight over one. */
     private fun pairPort(): Int = 23000 + (pairSeed.getAndIncrement() % 500)

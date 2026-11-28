@@ -16,6 +16,7 @@ class PrivacyState {
     required this.dnsOn,
     required this.httpOn,
     required this.fails,
+    required this.carrierGroup,
   });
 
   final bool on;
@@ -44,6 +45,10 @@ class PrivacyState {
 
   /// How many dials this pair was dropped after. Three is where the tunnel stops asking.
   final int fails;
+
+  /// The machine mark of the server in use. Rows sharing it are the same box, so they cannot be a
+  /// second hop - the list says so instead of letting a test find out by timing out.
+  final String carrierGroup;
 }
 
 class PrivacyChecks {
@@ -167,6 +172,7 @@ class PrivacyApi {
       dnsOn: v['dnsOn'] != false,
       httpOn: v['httpOn'] != false,
       fails: (v['fails'] as int?) ?? 0,
+      carrierGroup: '${v['carrierGroup'] ?? ''}',
     );
   }
 
@@ -203,4 +209,14 @@ class PrivacyApi {
     final m = await _ch.invokeMapMethod<String, String>('blobPrivacyPairs');
     return m ?? const <String, String>{};
   }
+
+  /// Which rows are the same machine: rows sharing a number cannot be two hops.
+  static Future<Map<String, String>> groups() async {
+    final m = await _ch.invokeMapMethod<String, String>('blobPrivacyGroups');
+    return m ?? const <String, String>{};
+  }
+
+  /// Start the survey of every row as a second hop, or stop it if one is already running.
+  static Future<bool> survey() async =>
+      await _ch.invokeMethod<bool>('blobPrivacySurvey') ?? false;
 }

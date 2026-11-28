@@ -3287,6 +3287,10 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
   bool _coreDns = true;
   bool _blockHttp = true;
   int _fails = 0;
+  String _carrierGroup = '';
+  Map<String, String> _pairs = const {};
+  Map<String, String> _groups = const {};
+  bool _surveying = false;
   List<String> _result = const [];
   bool _busy = false;
 
@@ -3300,6 +3304,17 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
   void initState() {
     super.initState();
     _load();
+    _loadMarks();
+  }
+
+  /// What each row was measured as a second hop, and which rows are the same machine. Read once
+  /// here and again after a survey, so the picker paints from what the phone already knows.
+  Future<void> _loadMarks() async {
+    try {
+      final p = await PrivacyApi.pairs();
+      final g = await PrivacyApi.groups();
+      if (mounted) setState(() => {_pairs = p, _groups = g});
+    } catch (_) {}
   }
 
   Future<void> _load({bool over = false}) async {
@@ -3319,6 +3334,7 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
           _coreDns = s.dnsOn;
           _blockHttp = s.httpOn;
           _fails = s.fails;
+          _carrierGroup = s.carrierGroup;
         });
       }
     } catch (_) {
@@ -3347,12 +3363,7 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
       return;
     }
     if (!mounted) return;
-    // Which of these have already been measured as a second hop, so a row is chosen with a mark on
-    // it rather than by connecting and finding out the hard way.
-    Map<String, String> pairs = const {};
-    try {
-      pairs = await PrivacyApi.pairs();
-    } catch (_) {}
+    await _loadMarks();
     if (!mounted) return;
     final picked = await showDialog<String>(
       context: context,
@@ -3381,20 +3392,13 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
                               : Icons.radio_button_unchecked_rounded,
                         ),
                         title: Text((r['name'] ?? '').isEmpty ? r['id'] ?? '' : r['name']!),
-                        subtitle: (r['cat'] ?? '').isEmpty
-                            ? null
-                            : Text(r['cat']!, style: const TextStyle(fontSize: 12)),
-                        trailing: pairs[r['id']] == null
-                            ? null
-                            : Icon(
-                                pairs[r['id']] == '1'
-                                    ? Icons.double_arrow_rounded
-                                    : Icons.block_rounded,
-                                size: 18,
-                                color: pairs[r['id']] == '1'
-                                    ? Colors.green.shade600
-                                    : Colors.red.shade400,
-                              ),
+                        subtitle: Text(
+                          [
+                            if (!(r['cat'] ?? '').isEmpty) r['cat']!,
+                            _markOf(r['id'] ?? ''),
+                          ].where((e) => e.isNotEmpty).join(' - '),
+                          style: const TextStyle(fontSize: 12),
+                        ),
                         onTap: () => Navigator.pop(context, r['id'] ?? ''),
                       ),
                   ],
@@ -3413,6 +3417,23 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
     _inStore = picked.isEmpty || hit.isNotEmpty;
     await _save();
     if (mounted) setState(() {});
+  }
+
+  /// What the phone already knows about a row as a second hop: that it carries, the reason it did
+  /// not, or that it is the same machine as the server in use. Empty when it was never measured.
+  String _markOf(String id) {
+    if (id.isEmpty) return '';
+    final g = _groups[id] ?? '';
+    if (g.isNotEmpty && g == _carrierGroup) return 'same machine as your server';
+    return switch (_pairs[id] ?? '') {
+      'carries' => 'carries',
+      'handshake-reset' => 'handshake torn down',
+      'refused' => 'connection refused',
+      'no-answer' => 'never answered',
+      'unreachable' => 'cannot be reached from your server',
+      'page-refused' => 'answered nothing readable',
+      _ => '',
+    };
   }
 
   /// The verdicts, and under them every line the full debug produced: the page
@@ -3532,6 +3553,26 @@ class _PrivacyBlockState extends State<_PrivacyBlock> {
                           : _chainName,
           onTap: _pick,
           child: const Icon(Icons.chevron_right_rounded),
+        ),
+        _Row(
+          icon: Icons.rule_rounded,
+          label: 'Test every server as a second hop',
+          value: _surveying
+              ? 'running, one row at a time - the log says what each came back as. Tap to stop.'
+              : 'one row at a time, with the reason each failed written in the log. Tap again to stop.',
+          onTap: () async {
+            final running = await PrivacyApi.survey();
+            if (!mounted) return;
+            setState(() => _surveying = running);
+            if (!running) await _loadMarks();
+          },
+          child: _surveying
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.play_arrow_rounded),
         ),
         if (_chainId.isNotEmpty)
           _Row(

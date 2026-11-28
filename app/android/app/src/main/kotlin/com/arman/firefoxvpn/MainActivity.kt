@@ -181,6 +181,8 @@ class MainActivity : FlutterActivity() {
                             "dnsOn" to Privacy.dnsOn(this),
                             "httpOn" to Privacy.httpOn(this),
                             "fails" to Privacy.hopFails(this),
+                            // the picker marks rows that resolve to this same machine
+                            "carrierGroup" to Privacy.cachedGroup(this, CoreService.pickedId(this)),
                             "chainInStore" to (Privacy.chainId(this).isNotEmpty() &&
                                 runCatching {
                                     ir.v2rayng.compose.core.NativeSec.rowOf(Privacy.chainId(this))
@@ -211,6 +213,11 @@ class MainActivity : FlutterActivity() {
                 // does this pair carry, asked without touching the running tunnel
                 "blobPrivacyPair" -> inAsk(result) { Privacy.pairTest(this, call.argument<String>("id") ?: "") }
                 "blobPrivacyPairs" -> result.success(Privacy.pairVerdicts(this))
+                "blobPrivacyGroups" -> result.success(Privacy.hostGroups(this))
+                "blobPrivacySurvey" -> {
+                    Privacy.survey(this)
+                    result.success(Privacy.surveyRunning())
+                }
                 "irAdmin" -> result.success(
                     mapOf(
                         "popup" to Admin.popup(this),
